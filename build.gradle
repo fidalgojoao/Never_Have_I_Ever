@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application' version '8.13.2'
+    id 'org.jetbrains.kotlin.android' version '2.4.21'
+}
+
+android {
+    namespace 'game.neverhaveiever'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'game.neverhaveiever'
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName '0.1.0'
+    }
+    signingConfigs {
+        release {
+            storeFile file(System.getenv('NHI_KEYSTORE_PATH') ?: '../../outputs/Never-Have-I-Ever-upload-key.jks')
+            storePassword System.getenv('NHI_STORE_PASSWORD')
+            keyAlias 'neverhaveieverupload'
+            keyPassword System.getenv('NHI_STORE_PASSWORD')
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = '17' }
+}
+
+dependencies {
+    implementation 'com.android.billingclient:billing:9.1.0'
+    implementation 'androidx.activity:activity-ktx:1.10.1'
+    implementation 'androidx.core:core-ktx:1.15.0'
+    implementation 'androidx.fragment:fragment-ktx:1.8.6'
+}

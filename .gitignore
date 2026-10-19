@@ -1,0 +1,18 @@
+# Android / Gradle
+.gradle/
+.kotlin/
+build/
+local.properties
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+
+# Signing
+*.jks
+*.keystore
+*-upload-key-password.txt
+*-certificate.pem
+*-fingerprint.txt
