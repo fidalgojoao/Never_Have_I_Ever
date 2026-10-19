@@ -80,6 +80,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var billingClient: BillingClient
     private val prices = mutableMapOf<String, String>()
     private val products = mutableMapOf<String, ProductDetails>()
+    private val premiumMonthlyProductId="premium_monthly"
+    private val premiumAnnualProductId="premium_annual"
+    private val premiumLifetimeProductId="premium_lifetime"
+    private val premiumProductIds by lazy { setOf(premiumMonthlyProductId,premiumAnnualProductId,premiumLifetimeProductId) }
     private val knownLanguages=listOf("en","es","fr","de","pt","it","ru","ja","ko","zh-CN","zh-TW","ar","hi","id","tr","vi","th","pl","nl","uk","bn","fa","sv","ro","cs","el","hu","he","da","fi","no","ms","fil","ur","sw","ta","te","mr","gu","kn","ml","pa","sr","hr","sk","bg","lt","sl","et","lv")
     private val uiTranslations by lazy { runCatching { JSONObject(assets.open("ui_translations.json").bufferedReader().use{it.readText()}) }.getOrDefault(JSONObject()) }
     private val promptAssetPrefix="never_have_i_ever_prompts_"
@@ -1063,8 +1067,8 @@ If this policy changes, the current text will be provided in the app and on its 
                 prices[detail.productId]=detail.oneTimePurchaseOfferDetails?.formattedPrice ?: detail.subscriptionOfferDetails?.firstOrNull()?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice ?: "See price in Google Play"
             } }
         }
-        query(listOf("full_app_unlock","premium_annual"),BillingClient.ProductType.SUBS)
-        query(listOf("premium_levels"),BillingClient.ProductType.INAPP)
+        query(listOf(premiumMonthlyProductId,premiumAnnualProductId),BillingClient.ProductType.SUBS)
+        query(listOf(premiumLifetimeProductId),BillingClient.ProductType.INAPP)
     }
     private fun queryOwned(announce:Boolean=false, onComplete:(Boolean)->Unit={ _ -> }){
         if(announce) Toast.makeText(this,"Checking Google Play purchases…",Toast.LENGTH_SHORT).show()
@@ -1086,7 +1090,7 @@ If this policy changes, the current text will be provided in the app and on its 
                 if(remaining==0){
                     if(allSuccessful) handlePurchases(restored,true)
                     if(announce){
-                        val found=restored.any { purchase -> purchase.purchaseState==Purchase.PurchaseState.PURCHASED && purchase.products.any { it=="premium_levels" || it=="full_app_unlock" || it=="premium_annual" } }
+                        val found=restored.any { purchase -> purchase.purchaseState==Purchase.PurchaseState.PURCHASED && purchase.products.any { it in premiumProductIds } }
                         Toast.makeText(this,if(!allSuccessful) "Google Play could not be reached. Your valid offline Premium access is unchanged." else if(found) "Purchases restored. Premium Levels unlocked." else "No eligible purchases were found for this Google Play account.",Toast.LENGTH_LONG).show()
                     }
                     onComplete(allSuccessful)
@@ -1097,11 +1101,11 @@ If this policy changes, the current text will be provided in the app and on its 
     private fun handlePurchases(purchases:List<Purchase>, replaceEntitlements:Boolean=false){
         val wasPremium=premium
         val wasLifetime=lifetimePremium
-        val owned=purchases.filter { it.purchaseState==Purchase.PurchaseState.PURCHASED }.flatMap { it.products }.filter { it in setOf("premium_levels","full_app_unlock","premium_annual") }.toSet()
+        val owned=purchases.filter { it.purchaseState==Purchase.PurchaseState.PURCHASED }.flatMap { it.products }.filter { it in premiumProductIds }.toSet()
         if(replaceEntitlements) ownedProductIds.clear()
         ownedProductIds.addAll(owned)
         lifetimePremium=when {
-            "premium_levels" in ownedProductIds -> { cacheLifetimeEntitlement(); true }
+            premiumLifetimeProductId in ownedProductIds -> { cacheLifetimeEntitlement(); true }
             replaceEntitlements -> { clearCachedLifetimeEntitlement(); false }
             else -> lifetimePremium || hasValidCachedLifetimeEntitlement()
         }
@@ -1164,40 +1168,40 @@ If this policy changes, the current text will be provided in the app and on its 
         val root=base(); title(root,"Premium plans")
         root.addView(premiumSupportBanner(),lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16);topMargin=dp(16);bottomMargin=dp(10) })
         root.addView(label("Unlock every level, custom cards, comfort-zone calibration, and gameplay settings.",14,false,muted).apply { setPadding(0,0,0,dp(10)) },lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16) })
-        var selected="premium_annual"
+        var selected=premiumAnnualProductId
         val rows=mutableListOf<TextView>()
         fun refresh(){ rows.forEach { row -> val active=row.tag==selected; row.background=if(active)accentOutline(22)else shape(surface,22,1);row.setTextColor(if(active)accent else ink) } }
         fun addPlan(id:String,title:String,detail:String){
             val row=label("$title\n${prices[id] ?: "Current price from Google Play"} · $detail",15,true,ink,Gravity.CENTER_VERTICAL).apply { tag=id;setPadding(dp(18),0,dp(18),0);isClickable=true;setOnClickListener{selected=id;refresh()} }
             rows.add(row);root.addView(row,lp(-1,dp(72),4).apply { leftMargin=dp(16);rightMargin=dp(16) });refresh()
         }
-        addPlan("full_app_unlock","Monthly","renews monthly")
-        addPlan("premium_annual","Yearly","best value")
-        addPlan("premium_levels","Lifetime","one-time purchase")
+        addPlan(premiumMonthlyProductId,"Monthly","renews monthly")
+        addPlan(premiumAnnualProductId,"Yearly","best value")
+        addPlan(premiumLifetimeProductId,"Lifetime","one-time purchase")
         root.addView(label("Subscriptions renew automatically. Cancel anytime.",11,false,muted,Gravity.CENTER).apply { setPadding(0,dp(8),0,dp(8)) },lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16) })
         root.addView(button("Continue",accent,onAccent()){
             val detail=products[selected] ?: run { Toast.makeText(this,"Google Play is loading the current prices. Please try again shortly.",Toast.LENGTH_SHORT).show();return@button }
-            val item=BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(detail).apply { if(selected!="premium_levels") setOfferToken(detail.subscriptionOfferDetails?.firstOrNull()?.offerToken ?: "") }.build()
+            val item=BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(detail).apply { if(selected!=premiumLifetimeProductId) setOfferToken(detail.subscriptionOfferDetails?.firstOrNull()?.offerToken ?: "") }.build()
             billingClient.launchBillingFlow(this,BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(item)).build())
         },lp(-1,dp(54),4).apply { leftMargin=dp(16);rightMargin=dp(16) })
         root.addView(button("Restore purchases",surface,ink){queryOwned(true)},lp(-1,dp(54),4).apply { leftMargin=dp(16);rightMargin=dp(16) })
     }
-    private fun showPremium(firstLaunch:Boolean=false, planIds:List<String> = listOf("full_app_unlock","premium_annual","premium_levels")){
+    private fun showPremium(firstLaunch:Boolean=false, planIds:List<String> = listOf(premiumMonthlyProductId,premiumAnnualProductId,premiumLifetimeProductId)){
         if(premium) return
         val dialog=Dialog(this); premiumDialog=dialog; dialog.setOnDismissListener { if(premiumDialog===dialog) premiumDialog=null }; val scroll=ScrollView(this).apply { background=shape(surface,28,1);clipToOutline=true };styleScrollBar(scroll); val shell=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=shape(surface,28,1); setPadding(dp(16),dp(18),dp(16),dp(18)) }; scroll.addView(shell)
         val head=FrameLayout(this); head.addView(label(if(firstLaunch)"Welcome offer" else "Unlock Premium",22,true,ink,Gravity.CENTER),FrameLayout.LayoutParams(-1,dp(46),Gravity.CENTER)); head.addView(closeButton{dialog.dismiss()},FrameLayout.LayoutParams(dp(42),dp(42),Gravity.END or Gravity.CENTER_VERTICAL));shell.addView(head,lp(-1,dp(46),0))
         shell.addView(label(if(firstLaunch)"Your introductory discounts are ready." else "Get every level and setting.",14,false,muted,Gravity.CENTER).apply{setPadding(0,dp(4),0,dp(12))})
         shell.addView(premiumSupportBanner(),lp(-1,-2,6))
         shell.addView(label("✓ Unlock Hot, Naughty, and custom cards\n✓ Create your own truths and dares\n✓ Enable all gameplay settings",13,true,ink).apply{setLineSpacing(dp(5).toFloat(),1f);setPadding(dp(12),dp(10),dp(12),dp(10));background=shape(ColorUtils.blendARGB(surface,accent,.10f),18,1)},lp(-1,-2,10))
-        var selected=if("premium_annual" in planIds) "premium_annual" else planIds.first(); val rows=mutableListOf<TextView>()
+        var selected=if(premiumAnnualProductId in planIds) premiumAnnualProductId else planIds.first(); val rows=mutableListOf<TextView>()
         fun refresh(){ rows.forEach { row -> val active=row.tag==selected; row.setTextColor(if(active)accent else ink); row.background=if(active)accentOutline(18)else shape(surface,18,1) } }
         fun plan(id:String,title:String,detail:String){ val row=label("$title\n${prices[id] ?: "Price shown by Google Play"} · $detail",15,true,ink,Gravity.CENTER_VERTICAL).apply { tag=id; setPadding(dp(16),0,dp(16),0); isClickable=true; setOnClickListener{selected=id;refresh()} }; rows.add(row);shell.addView(row,lp(-1,dp(62),4));refresh() }
-        val captions=mapOf("full_app_unlock" to ("Monthly" to "renews monthly"),"premium_annual" to ("Yearly" to "best value"),"premium_levels" to ("Lifetime" to "one-time purchase"))
+        val captions=mapOf(premiumMonthlyProductId to ("Monthly" to "renews monthly"),premiumAnnualProductId to ("Yearly" to "best value"),premiumLifetimeProductId to ("Lifetime" to "one-time purchase"))
         planIds.forEach { id -> captions[id]?.let { plan(id,it.first,it.second) } }
         shell.addView(label("Subscriptions renew automatically. Cancel anytime.",11,false,muted,Gravity.CENTER).apply{setPadding(0,dp(8),0,dp(8))})
         shell.addView(button("Continue",accent,onAccent()){
             val detail=products[selected]; if(detail==null){Toast.makeText(this,"Google Play is loading the current price. Please try again shortly.",Toast.LENGTH_SHORT).show();return@button}
-            val item=BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(detail).apply { if(selected!="premium_levels") setOfferToken(detail.subscriptionOfferDetails?.firstOrNull()?.offerToken ?: "") }.build()
+            val item=BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(detail).apply { if(selected!=premiumLifetimeProductId) setOfferToken(detail.subscriptionOfferDetails?.firstOrNull()?.offerToken ?: "") }.build()
             billingClient.launchBillingFlow(this,BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(item)).build())
         },lp(-1,dp(54),4))
         shell.addView(button("Restore purchases",surface,ink){queryOwned(true)},lp(-1,dp(48),8))
