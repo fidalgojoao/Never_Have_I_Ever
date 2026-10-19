@@ -477,7 +477,7 @@ class MainActivity : ComponentActivity() {
             setImageResource(R.drawable.ic_brand_mark_orange)
             scaleType=ImageView.ScaleType.FIT_CENTER
             contentDescription=tr("Never Have I Ever")
-            if(useSystemColors || !isDark()) setColorFilter(accent,android.graphics.PorterDuff.Mode.SRC_IN)
+            setColorFilter(accent,android.graphics.PorterDuff.Mode.SRC_IN)
         }
         brand.addView(mark,lp(dp(36),dp(36),0))
         val copy=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(10),0,0,0) }
