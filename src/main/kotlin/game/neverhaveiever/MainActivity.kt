@@ -122,7 +122,6 @@ class MainActivity : ComponentActivity() {
             "settings" -> showSettings()
             "appearance" -> showAppearance()
             "language" -> showLanguage()
-            "gameplay" -> showGameplay()
             "help" -> showHelp()
             "about" -> showAbout()
             "rules" -> showGameRules()
@@ -226,12 +225,12 @@ class MainActivity : ComponentActivity() {
         setupBilling()
         loadState()
         textToSpeech=TextToSpeech(this){ if(it==TextToSpeech.SUCCESS) configureSpeechVoice() }
-        players.forEach { it.truthStreak = 0 }
         saveState()
         loadDecks()
         applyThemeAndHome()
         if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.TIRAMISU) onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) { runOnUiThread { goBack() } }
         if(!prefs.getBoolean("privacySeen",false)) window.decorView.post { showPrivacyNotice() }
+        else if(!prefs.getBoolean("gameRulesSeen",false)) window.decorView.post { showGameRulesNotice() }
         else if(!prefs.getBoolean("premiumWelcomeSeen",false)) { offerAfterPrivacy=true; window.decorView.post { requestFirstOffer() } }
     }
 
@@ -473,7 +472,7 @@ class MainActivity : ComponentActivity() {
     private fun showHome() {
         textToSpeech?.stop()
         activeTimer?.cancel()
-        val play=button("Let's play  →",accent,moveButtonInk,{ if(players.size>=2){ val incomplete=players.indexOfFirst{it.gender.isBlank() || it.preference.isBlank()}; if(incomplete>=0){ Toast.makeText(this,tr("Choose gender and interaction preferences for every player before playing."),Toast.LENGTH_LONG).show(); editPlayer(incomplete); return@button }; round=1; hasActiveTurn=false; remainingTurnIndices.clear(); openScreen("spinner"){showPlayerSpinner()} } }).apply { textSize=20f;setTextColor(moveButtonInk);minHeight=dp(66);background=GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,intArrayOf(Color.rgb(255,130,55),Color.rgb(255,78,132))).apply { cornerRadius=dp(33).toFloat() };isEnabled=players.size>=2;alpha=if(players.size>=2)1f else .5f }
+        val play=button("Let's play  →",accent,moveButtonInk,{ if(players.size>=2){ round=1; hasActiveTurn=false; remainingTurnIndices.clear(); openScreen("spinner"){showPlayerSpinner()} } }).apply { textSize=20f;setTextColor(moveButtonInk);minHeight=dp(66);background=GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,intArrayOf(Color.rgb(255,130,55),Color.rgb(255,78,132))).apply { cornerRadius=dp(33).toFloat() };isEnabled=players.size>=2;alpha=if(players.size>=2)1f else .5f }
         val input=EditText(this).apply { hint=tr("Player name"); textSize=17f; setTextColor(ink); setHintTextColor(muted); setSingleLine(true); minHeight=dp(52); background=shape(this@MainActivity.background,18,1); setPadding(dp(15),0,dp(10),0) }
         val add=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         add.addView(input,weight(1f)); add.addView(Space(this),lp(dp(10),1,0)); add.addView(button("Add player +",accent,onAccent()){ val name=input.text.toString().trim(); if(name.isNotEmpty()){ players.add(Player(name)); input.text.clear(); editPlayer(players.lastIndex,true) } },lp(dp(120),dp(52),0))
@@ -503,10 +502,7 @@ class MainActivity : ComponentActivity() {
             val row=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),dp(8),dp(8),dp(8)); background=shape(surface,16,1) }
             val info=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
             info.addView(label(p.name,13,true).apply { textSize=13.65f; maxLines=2; ellipsize=android.text.TextUtils.TruncateAt.END })
-            if(p.preference=="Men & women" || p.preference=="Specific players") {
-                info.addView(label("${p.gender} ·",10,false,muted).apply { setPadding(0,dp(3),0,0) })
-                info.addView(label(p.preference,10,false,muted))
-            } else info.addView(label("${p.gender} · ${p.preference}",10,false,muted).apply { setPadding(0,dp(3),0,0) })
+            info.addView(label(trf("Comfort zone · {value}/10","value" to p.comfort),10,false,muted).apply { setPadding(0,dp(3),0,0) })
             row.addView(info,weight(1f))
             row.addView(cardAction(R.drawable.ic_edit,"Edit ${p.name}"){editPlayer(index)},LinearLayout.LayoutParams(dp(42),dp(42)).apply { leftMargin=dp(4) })
             val position=playerGrid.childCount
@@ -551,16 +547,31 @@ class MainActivity : ComponentActivity() {
         val player=players[index]; val dialog=Dialog(this); var committed=!isNew
         val form=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(18),dp(16),dp(18));background=shape(this@MainActivity.background,22,1)};dialog.setContentView(form);dialog.setOnDismissListener{if(isNew && !committed && index in players.indices && players[index]===player)players.removeAt(index);showHome()}
         val top=FrameLayout(this);top.addView(backButton{dialog.dismiss()},FrameLayout.LayoutParams(dp(46),dp(46),Gravity.START or Gravity.CENTER_VERTICAL));top.addView(label("Edit player",18,true,ink,Gravity.CENTER),FrameLayout.LayoutParams(-1,dp(46),Gravity.CENTER));form.addView(top,lp(-1,dp(46),0))
-        form.addView(label("Name",12,true).apply{setPadding(0,dp(12),0,0)});val name=EditText(this).apply{setText(player.name);setTextColor(ink);setSingleLine(true);textSize=17f;background=shape(this@MainActivity.background,14,1);setPadding(dp(12),0,dp(12),0)};form.addView(name,lp(-1,dp(50),3))
-        fun choices(values:List<String>, initial:String, columns:Int=1, change:(String)->Unit={}):Pair<ViewGroup,()->String>{var selected=initial;val host=if(columns==1)LinearLayout(this).apply{gravity=Gravity.CENTER}else GridLayout(this).apply{columnCount=2};val all=mutableListOf<TextView>();values.forEachIndexed{i,v->val b=button(v,if(v==selected)accent else surface,if(v==selected)accent else ink){};b.tag=v;b.textSize=13f;b.minHeight=dp(46);b.setOnClickListener{selected=v;all.forEach{x->val on=x.tag==v;x.background=if(on)accentOutline(22)else shape(surface,22,1);x.setTextColor(if(on)accent else ink)};change(v)};all.add(b);if(host is LinearLayout)host.addView(b,LinearLayout.LayoutParams(0,dp(46),1f).apply{if(i<values.lastIndex)rightMargin=dp(7)})else host.addView(b,GridLayout.LayoutParams().apply{width=0;height=dp(46);columnSpec=GridLayout.spec(GridLayout.UNDEFINED,1f);setMargins(if(i%2==0)0 else dp(4),dp(2),if(i%2==0)dp(4)else 0,dp(2))})};return host to {selected}}
-        form.addView(label("Gender",12,true).apply{setPadding(0,dp(8),0,dp(4))});val(gender,getGender)=choices(listOf("Man","Woman"),player.gender);form.addView(gender)
-        fun comfortLabel(value:Int)=trf("Comfort-zone calibration · {value}/10","value" to value)+if(!premium)"  🔒" else ""
-        val calibration=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=shape(if(premium)surface else ColorUtils.blendARGB(surface,outline,.42f),16,1);setPadding(dp(16),dp(8),dp(16),dp(8));isClickable=!premium;setOnClickListener{if(!premium)showPremium()}};val calibrationHead=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL};val comfortTitle=label(comfortLabel(player.comfort),12,true,if(premium)ink else muted);calibrationHead.addView(comfortTitle,weight(1f));var comfortEnabled=player.comfortEnabled&&premium;calibrationHead.addView(expressiveToggle(comfortEnabled,premium){on->comfortEnabled=on},lp(dp(58),dp(36),0));calibration.addView(calibrationHead);calibration.addView(label(if(premium)"Adjust easier prompts for this player." else "Tap to view Premium plans and unlock per-player prompt adjustment.",10,false,muted));val comfort=SeekBar(this).apply{max=9;progress=player.comfort-1;progressTintList=android.content.res.ColorStateList.valueOf(accent);thumbTintList=android.content.res.ColorStateList.valueOf(accent);backgroundTintList=android.content.res.ColorStateList.valueOf(outline);minimumHeight=dp(34);isEnabled=premium};comfort.setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{override fun onProgressChanged(s:SeekBar?,v:Int,u:Boolean){comfortTitle.text=comfortLabel(v+1)};override fun onStartTrackingTouch(s:SeekBar?){};override fun onStopTrackingTouch(s:SeekBar?){}});calibration.addView(comfort,lp(-1,dp(26),0));val scale=LinearLayout(this);scale.addView(label("1 · Wholesome & soft",10,false,muted),weight(1f));scale.addView(label("10 · Chaos & spicy",10,false,muted,Gravity.END),weight(1f));calibration.addView(scale);form.addView(calibration,lp(-1,-2,6))
-        form.addView(label("Wants to interact with",12,true).apply{setPadding(0,dp(8),0,dp(4))});val refreshers=mutableListOf<()->Unit>();val(pref,getPref)=choices(listOf("Men","Women","Men & women","Specific players"),player.preference,2){refreshers.forEach{it()}};form.addView(pref);form.addView(label("Choose specific players to decide exactly who this player can be matched with.",12,false,muted).apply{setPadding(0,dp(8),0,dp(6))})
-        val selected=player.specificPlayers.toMutableSet();val list=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(4),dp(16),dp(4))};val box=ScrollView(this).apply{addView(list);background=shape(surface,14,1);clipToOutline=true;isFillViewport=true;styleScrollBar(this)}
-        players.filterIndexed{i,_->i!=index}.forEach{p->val row=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL;background=shape(this@MainActivity.background,14,1);setPadding(dp(10),0,dp(10),0)};val check=CheckBox(this).apply{buttonTintList=android.content.res.ColorStateList.valueOf(accent);isClickable=false};val copy=label("${p.name}  ·  ${tr(p.gender)}",13,true);row.addView(check,lp(dp(40),dp(40),0));row.addView(copy,weight(1f));fun render(){val yes=getPref()=="Specific players";check.isChecked=p.name in selected;row.alpha=if(yes)1f else .38f;copy.setTextColor(if(yes)ink else muted)};row.setOnClickListener{if(getPref()=="Specific players"){if(p.name in selected)selected.remove(p.name)else selected.add(p.name);render()}};refreshers.add(::render);render();list.addView(row,lp(-1,dp(46),2))};val otherPlayers=players.size-1;if(otherPlayers>0){ form.addView(box,LinearLayout.LayoutParams(-1,dp(if(otherPlayers>=3)154 else otherPlayers*48+12)).apply{topMargin=dp(4);bottomMargin=dp(6)}) }
-        val validation=label("",11,true,Color.rgb(186,26,26)).apply{visibility=View.GONE};form.addView(validation,lp(-1,-2,8))
-        val destructive=Color.rgb(211,47,47);val actions=LinearLayout(this);val remove=button("Remove player",surface,destructive){players.removeAt(index);saveState();dialog.dismiss()}.apply{background=toneOutline(destructive);setTextColor(destructive);textSize=13f;fitSingleLine(this,9,13)};actions.addView(remove,LinearLayout.LayoutParams(0,dp(52),1f).apply{rightMargin=dp(6)});val save=button("Save player",accent,onAccent()){if(getGender().isBlank() || getPref().isBlank()){validation.text=tr("Choose both gender and interaction preferences to save this player.");validation.visibility=View.VISIBLE;return@button};player.name=name.text.toString().trim().ifEmpty{player.name};player.gender=getGender();player.preference=getPref();player.comfort=comfort.progress+1;player.comfortEnabled=comfortEnabled&&premium;player.specificPlayers.clear();player.specificPlayers.addAll(selected);committed=true;saveState();dialog.dismiss()}.apply{textSize=13f;fitSingleLine(this,9,13)};actions.addView(save,LinearLayout.LayoutParams(0,dp(52),1f).apply{leftMargin=dp(6)});form.addView(actions,lp(-1,dp(52),6));dialog.show();dialog.window?.apply{decorView.setPadding(0,0,0,0);setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));setLayout(resources.displayMetrics.widthPixels-dp(32),if(players.size<=3)WindowManager.LayoutParams.WRAP_CONTENT else (resources.displayMetrics.heightPixels*.88f).toInt());setGravity(Gravity.CENTER);attributes=attributes.apply{dimAmount=.4f};addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)}
+        form.addView(label("Name",12,true).apply{setPadding(0,dp(12),0,dp(4))})
+        val name=EditText(this).apply{setText(player.name);setTextColor(ink);setSingleLine(true);textSize=17f;background=shape(this@MainActivity.background,14,1);setPadding(dp(12),0,dp(12),0)}
+        form.addView(name,lp(-1,dp(50),10))
+        fun comfortLabel(value:Int)=trf("Comfort-zone calibration · {value}/10","value" to value)
+        var comfortEnabled=player.comfortEnabled
+        val calibration=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=shape(surface,18,1);setPadding(dp(16),dp(12),dp(16),dp(12))}
+        val calibrationHead=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL}
+        val comfortTitle=label(comfortLabel(player.comfort),14,true,ink)
+        calibrationHead.addView(comfortTitle,weight(1f))
+        calibrationHead.addView(expressiveToggle(comfortEnabled){on->comfortEnabled=on},lp(dp(58),dp(36),0))
+        calibration.addView(calibrationHead)
+        calibration.addView(label("Keep prompts within this player's comfort zone.",11,false,muted).apply{setPadding(0,dp(2),0,dp(6))})
+        val comfort=SeekBar(this).apply{max=9;progress=player.comfort-1;progressTintList=android.content.res.ColorStateList.valueOf(accent);thumbTintList=android.content.res.ColorStateList.valueOf(accent);backgroundTintList=android.content.res.ColorStateList.valueOf(outline);minimumHeight=dp(34)}
+        comfort.setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{override fun onProgressChanged(s:SeekBar?,v:Int,u:Boolean){comfortTitle.text=comfortLabel(v+1)};override fun onStartTrackingTouch(s:SeekBar?){};override fun onStopTrackingTouch(s:SeekBar?){}})
+        calibration.addView(comfort,lp(-1,dp(30),0))
+        val scale=LinearLayout(this);scale.addView(label("1 · Wholesome & soft",10,false,muted),weight(1f));scale.addView(label("10 · Chaos & spicy",10,false,muted,Gravity.END),weight(1f));calibration.addView(scale)
+        form.addView(calibration,lp(-1,-2,12))
+        val destructive=Color.rgb(211,47,47)
+        val actions=LinearLayout(this)
+        val remove=button("Remove player",surface,destructive){players.removeAt(index);saveState();dialog.dismiss()}.apply{background=toneOutline(destructive);setTextColor(destructive);textSize=13f;fitSingleLine(this,9,13)}
+        actions.addView(remove,LinearLayout.LayoutParams(0,dp(52),1f).apply{rightMargin=dp(6)})
+        val save=button("Save player",accent,onAccent()){player.name=name.text.toString().trim().ifEmpty{player.name};player.comfort=comfort.progress+1;player.comfortEnabled=comfortEnabled;committed=true;saveState();dialog.dismiss()}.apply{textSize=13f;fitSingleLine(this,9,13)}
+        actions.addView(save,LinearLayout.LayoutParams(0,dp(52),1f).apply{leftMargin=dp(6)})
+        form.addView(actions,lp(-1,dp(52),6))
+        dialog.show();dialog.window?.apply{decorView.setPadding(0,0,0,0);setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));setLayout(resources.displayMetrics.widthPixels-dp(32),WindowManager.LayoutParams.WRAP_CONTENT);setGravity(Gravity.CENTER);attributes=attributes.apply{dimAmount=.4f};addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)}
     }
     private fun findRadio(group:RadioGroup):String { val id=group.checkedRadioButtonId; return group.findViewById<RadioButton>(id)?.text?.toString() ?: "" }
 
@@ -572,7 +583,6 @@ class MainActivity : ComponentActivity() {
         val chosenLanguage=selectedLanguage()
         settingsRow(group,"language","Language",languageDisplayName(chosenLanguage),{openScreen("language"){showLanguage()}},28,3,3)
         settingsRow(group,"appearance","Appearance","Themes and colors",{openScreen("appearance"){showAppearance()}},3,3,3)
-        settingsRow(group,"gameplay","Gameplay","Rules and preferences",{openScreen("gameplay"){showGameplay()}},3,3,3)
         settingsRow(group,"help","Help","Support tickets, feature requests",{openScreen("help"){showHelp()}},3,3,3)
         settingsRow(group,"about","General Information","Privacy policy, Game rules, App info",{openScreen("about"){showAbout()}},3,28,3)
     }    private fun settingsRow(root:LinearLayout,icon:String,name:String,desc:String,action:()->Unit,topRadius:Int=24,bottomRadius:Int=24,verticalMargin:Int=0,showArrow:Boolean=true){
@@ -604,7 +614,7 @@ class MainActivity : ComponentActivity() {
         copy.addView(label(name,16,true)); copy.addView(label(desc,12,false,muted)); c.addView(copy,weight(1f))
         if(showArrow) c.addView(label("›",28,false,muted,Gravity.CENTER),lp(dp(28),dp(48),0))
     }
-    private val discordInviteDisplay="discord.gg/Fm2dqKv25m"
+    private val discordInviteDisplay="discord.gg/EJ7ThCgw4g"
     private val discordInviteUrl="https://$discordInviteDisplay"
     private fun showHelp(){
         val root=base();title(root,"Help");divider(root,16)
@@ -689,33 +699,6 @@ class MainActivity : ComponentActivity() {
         copy.addView(label("Match the app to your device palette.",12,false,muted))
         c.addView(copy,weight(1f))
         c.addView(expressiveToggle(useSystemColors){ on->useSystemColors=on;saveState();showAppearance() },lp(dp(64),dp(40),0))
-    }    private fun showGameplay(){
-        val root=base(); title(root,"Gameplay"); val locked=!premium
-        val group=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        root.addView(group,lp(-1,-2,16).apply { leftMargin=dp(16); rightMargin=dp(16) })
-        fun groupCard(topRadius:Int,bottomRadius:Int)=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=groupedShape(surface,topRadius,bottomRadius,1); setPadding(dp(16),dp(16),dp(16),dp(16)) }
-        val c=groupCard(28,3); group.addView(c,lp(-1,-2,0).apply{bottomMargin=dp(3)})
-        val heading=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
-        val copy=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        copy.addView(label("Limit consecutive truths"+if(locked)"  🔒" else "",16,true,if(locked)muted else ink))
-        copy.addView(label(if(locked)"Premium feature · requires Premium Levels." else "Require a dare after the chosen number of truths.",12,false,muted))
-        heading.addView(copy,weight(1f))
-        heading.addView(expressiveToggle(!locked&&limitTruths,!locked){ on->limitTruths=on;saveState() },lp(dp(64),dp(40),0))
-        c.addView(heading)
-        c.addView(label("Truths allowed before a dare",13,true,if(locked)muted else ink).apply { setPadding(0,dp(18),0,dp(8)) })
-        val values=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL; alpha=if(locked).48f else 1f }
-        (1..5).forEach { value ->
-            val active=value==truthLimit
-            lateinit var choice:TextView
-            choice=button(value.toString(),if(active&&!locked)accent else surface,if(active&&!locked)accent else muted) { if(!locked && value!=truthLimit) animateNumberChoice(choice){ truthLimit=value; saveState(); showGameplay() } }.apply { minHeight=dp(44); textSize=15f; isEnabled=!locked; background=if(active&&!locked)accentOutline(18)else shape(surface,18,1) }
-            values.addView(choice,LinearLayout.LayoutParams(0,dp(44),1f).apply { if(value>1) leftMargin=dp(5) })
-        }
-        c.addView(values)
-        val truthSummary=trf(if(truthLimit==1)"Each player can choose up to {count} truth before Dare is required." else "Each player can choose up to {count} truths before Dare is required.","count" to truthLimit)
-        c.addView(label(if(locked)"Unlock Premium Levels to choose a custom truth limit." else truthSummary,12,false,muted).apply { setPadding(0,dp(10),0,dp(2)) })
-        val reverse=groupCard(3,28); group.addView(reverse,lp(-1,-2,0))
-        val head=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL};val reverseCopy=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL};reverseCopy.addView(label("Reverse Dare"+if(locked)"  🔒" else "",16,true,if(locked)muted else ink));reverseCopy.addView(label(if(locked)"Premium feature · requires Premium Levels." else "After consecutive dares, allow the player to assign a dare to another random player.",12,false,muted));head.addView(reverseCopy,weight(1f));head.addView(expressiveToggle(!locked&&reverseDares,!locked){on->reverseDares=on;saveState();showGameplay()},lp(dp(64),dp(40),0));reverse.addView(head)
-        reverse.addView(label("Dares before Reverse Dare",13,true,if(locked)muted else ink).apply{setPadding(0,dp(14),0,dp(7))});val counts=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL;alpha=if(locked).48f else 1f};(1..5).forEach{value->val active=value==reverseDareLimit;lateinit var choice:TextView;choice=button(value.toString(),if(active&&!locked)accent else surface,if(active&&!locked)accent else muted){if(!locked && value!=reverseDareLimit)animateNumberChoice(choice){reverseDareLimit=value;saveState();showGameplay()}}.apply{minHeight=dp(44);textSize=15f;isEnabled=!locked;background=if(active&&!locked)accentOutline(18)else shape(surface,18,1)};counts.addView(choice,LinearLayout.LayoutParams(0,dp(44),1f).apply{if(value>1)leftMargin=dp(5)})};reverse.addView(counts)
     }
     private fun showAbout(){
         val root=base(); title(root,"General Information")
@@ -755,36 +738,52 @@ class MainActivity : ComponentActivity() {
         c.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         root.addView(c,LinearLayout.LayoutParams(-1,0,1f).apply { topMargin=dp(10) })
     }
-    private fun showGameRules(){ informationPage("Game rules",trKey("__game_rules_body",gameRulesText())) }
-    private fun gameRulesText():String = """
-• Add at least two players. Each player chooses a gender and who they want to interact with: Men, Women, Men & women, or selected Specific players.
-
-• The spinner chooses turns fairly. The same player cannot be selected twice in a row. With four or more players, everyone is selected before anyone repeats.
-
-• On each turn, choose Never Have I Ever. You may choose another prompt before completing the turn.
-
-• Choose a level: Casual for easy and silly prompts, or Flirty for playful and bold prompts.
-
-• PREMIUM — Hot adds confident and intimate prompts. Naughty adds the boldest and most daring prompts.
-
-• PREMIUM — My truths and dares lets you create, edit, delete, import, export, and play your own custom cards.
-
-• PREMIUM — Comfort-zone calibration sets a 1–10 intensity limit for each player. A targeted prompt respects the lower enabled comfort setting of everyone involved.
-
-• PREMIUM — Limit consecutive truths can require a Dare after the selected number of Truth choices.
-
-• PREMIUM — Reverse Dare can let a player assign a dare to another randomly selected player after the configured number of consecutive dares.
-
-• Targeted prompts follow the active player's interaction preference and never deliberately choose an excluded player.
-
-• The speaker button can read the displayed prompt aloud through the device's configured text-to-speech engine.
-
-• Keep every action voluntary. Anyone may skip a prompt. Stop immediately when someone is uncomfortable, and keep play consensual and free from harm.
-""".trimIndent()
+    private data class GameRule(val title:String,val detail:String,val highlighted:Boolean=false,val optional:Boolean=false)
+    private fun gameRuleItems():List<GameRule> = listOf(
+        GameRule("Play safely and respect every player","Participation is always voluntary. Anyone may skip a statement, change their mind, or stop playing. Stop immediately if someone feels uncomfortable.",highlighted=true),
+        GameRule("1. Add players","Add at least two players to the game."),
+        GameRule("2. Edit their preferences","Use the free comfort-zone calibration to keep prompts appropriate for each player."),
+        GameRule("3. Choose the game level","Choose Casual, Flirty, Hot, Naughty, or your custom cards."),
+        GameRule("4. Start the game","Tap Let's play. The wheel chooses a player and the app shows a Never Have I Ever statement."),
+        GameRule("My custom cards","Create, edit, import, export, and play your own statements.",optional=true),
+        GameRule("Prompt narration","Use the speaker button to read the displayed statement aloud.",optional=true)
+    )
+    private fun gameRulesPanel():LinearLayout = LinearLayout(this).apply {
+        orientation=LinearLayout.VERTICAL
+        val rules=gameRuleItems()
+        rules.forEachIndexed { index,rule ->
+            val card=LinearLayout(this@MainActivity).apply {
+                orientation=LinearLayout.VERTICAL
+                setPadding(dp(14),dp(12),dp(14),dp(12))
+                background=if(rule.highlighted) shape(ColorUtils.blendARGB(surface,accent,if(isDark()).18f else .10f),18,2,accent) else shape(surface,18,1)
+                addView(label(if(rule.optional)"OPTIONAL · ${rule.title}" else rule.title,14,true,if(rule.highlighted)accent else ink))
+                addView(label(rule.detail,12,false,muted).apply{setPadding(0,dp(5),0,0);setLineSpacing(dp(2).toFloat(),1f)})
+            }
+            addView(card,lp(-1,-2,if(index==rules.lastIndex)0 else 7))
+        }
+    }
+    private fun showGameRules(){
+        val root=base();title(root,"Game rules");divider(root,12)
+        root.addView(label("Follow these steps to start, then explore the optional features whenever you want.",14,false,muted).apply{setPadding(0,0,0,dp(10))},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        root.addView(gameRulesPanel(),lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+    }
+    private fun continueAfterFirstRun(){ if(!prefs.getBoolean("premiumWelcomeSeen",false)){offerAfterPrivacy=true;window.decorView.post{requestFirstOffer()}} }
+    private fun showGameRulesNotice(){
+        val dialog=Dialog(this)
+        val shell=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=shape(surface,28,1);clipToOutline=true;setPadding(dp(18),dp(18),dp(18),dp(18))}
+        shell.addView(label("Game rules",22,true))
+        shell.addView(label("A quick guide before your first game.",13,false,muted).apply{setPadding(0,dp(6),0,dp(10))})
+        val scroll=ScrollView(this).apply{setPadding(0,0,dp(2),0)};styleScrollBar(scroll)
+        scroll.addView(gameRulesPanel().apply{setPadding(0,0,dp(16),dp(8))})
+        shell.addView(scroll,LinearLayout.LayoutParams(-1,0,1f).apply{rightMargin=dp(-16)})
+        shell.addView(button("Start playing",accent,onAccent()){prefs.edit().putBoolean("gameRulesSeen",true).apply();dialog.dismiss();continueAfterFirstRun()},lp(-1,dp(54),0))
+        dialog.setContentView(shell);dialog.setCancelable(false);dialog.show()
+        dialog.window?.apply{setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));val dialogHeight=((resources.displayMetrics.heightPixels*.76f).toInt()+dp(40)).coerceAtMost(resources.displayMetrics.heightPixels-dp(32));setLayout((resources.displayMetrics.widthPixels*.90f).toInt(),dialogHeight);setGravity(Gravity.CENTER);attributes=attributes.apply{dimAmount=.42f;if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S)blurBehindRadius=dp(22)};addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S)addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)}
+    }
     private fun privacyText():String = """
 Never Have I Ever is a local party game. It does not require an account and does not operate an advertising, analytics, or remote gameplay server.
 
-Data stored on your device may include player names, gender and interaction preferences, specific-player selections, comfort-zone settings, selected game level, custom cards, gameplay progress, appearance and gameplay settings, and a protected Premium entitlement status. This information is used only to provide the app's features and resume your game.
+Data stored on your device may include player names, comfort-zone settings, the selected game level, custom cards, gameplay progress, appearance settings, and a protected Premium entitlement status. This information is used only to provide the app's features and resume your game.
 
 The app does not sell your information. The developer does not receive or share your locally stored game data. Never Have I Ever does not request access to your location, contacts, camera, microphone, Bluetooth, or other nearby devices.
 
@@ -812,10 +811,11 @@ If this policy changes, the current text will be provided in the app and on its 
         val shell=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=shape(surface,28,1); clipToOutline=true; setPadding(dp(18),dp(18),dp(18),dp(18)) }
         shell.addView(label("Privacy policy",22,true))
         shell.addView(label("Before you start, please read how Never Have I Ever handles your data.",13,false,muted).apply { setPadding(0,dp(6),0,dp(8)) })
+        shell.addView(label("You can revisit the privacy policy in Settings > General Information.",12,true,accent).apply{setPadding(0,0,0,dp(10))})
         val scroll=ScrollView(this).apply { setPadding(0,0,dp(2),0) };styleScrollBar(scroll)
         scroll.addView(label(linkedInformationText(trKey("__privacy_policy_body",privacyText())),13,false,ink).apply { movementMethod=android.text.method.LinkMovementMethod.getInstance();highlightColor=Color.TRANSPARENT;setLineSpacing(dp(5).toFloat(),1f);setPadding(0,0,dp(18),dp(8)) })
         shell.addView(scroll,LinearLayout.LayoutParams(-1,0,1f).apply { rightMargin=dp(-16) })
-        shell.addView(button("Understood",accent,onAccent()){ prefs.edit().putBoolean("privacySeen",true).apply(); dialog.dismiss(); if(!prefs.getBoolean("premiumWelcomeSeen",false)){ offerAfterPrivacy=true; window.decorView.post { requestFirstOffer() } } },lp(-1,dp(54),0))
+        shell.addView(button("Understood",accent,onAccent()){ prefs.edit().putBoolean("privacySeen",true).apply(); dialog.dismiss(); if(!prefs.getBoolean("gameRulesSeen",false))window.decorView.post{showGameRulesNotice()}else continueAfterFirstRun() },lp(-1,dp(54),0))
         dialog.setContentView(shell); dialog.setCancelable(false); dialog.show()
         dialog.window?.apply { setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)); val dialogHeight=((resources.displayMetrics.heightPixels*.76f).toInt()+dp(40)).coerceAtMost(resources.displayMetrics.heightPixels-dp(32)); setLayout((resources.displayMetrics.widthPixels*.90f).toInt(),dialogHeight); setGravity(Gravity.CENTER); attributes=attributes.apply { dimAmount=.42f; if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S) blurBehindRadius=dp(22) }; addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND); if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S) addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND) }
     }    private fun eligibleTargets(active:Player):List<Player>{
@@ -887,44 +887,33 @@ If this policy changes, the current text will be provided in the app and on its 
         val step=360f/players.size
         val targetRotation=4*360f-step/2f-chosen*step
         val spinSound=android.media.MediaPlayer.create(this,R.raw.wheel_spin)?.apply{isLooping=false;seekTo(0);start()}
-        ValueAnimator.ofFloat(0f,targetRotation).apply { duration=4000; interpolator=DecelerateInterpolator(); addUpdateListener { wheel.wheelRotation=it.animatedValue as Float; wheel.invalidate() }; doOnEnd { spinSound?.runCatching{if(isPlaying)stop()};spinSound?.release();turn=chosen; hasActiveTurn=true; if(reverseDarePending){reverseDarePending=false;currentScreen="card";showCard(nextCard("dare"))}else{currentScreen="choices";showChoices()} }; start() }
+        ValueAnimator.ofFloat(0f,targetRotation).apply { duration=4000; interpolator=DecelerateInterpolator(); addUpdateListener { wheel.wheelRotation=it.animatedValue as Float; wheel.invalidate() }; doOnEnd { spinSound?.runCatching{if(isPlaying)stop()};spinSound?.release();turn=chosen;hasActiveTurn=true;currentScreen="card";showCard(nextCard()) }; start() }
     }
     private fun ValueAnimator.doOnEnd(action:()->Unit) { addListener(object:android.animation.AnimatorListenerAdapter(){ override fun onAnimationEnd(animation:android.animation.Animator){ action() } }) }
     private fun showChoices(){
-        textToSpeech?.stop()
-        val root=base(scroll=false);val player=players[turn%players.size];val truthAllowed=!(limitTruths&&player.truthStreak>=truthLimit);val reverseReady=premium&&reverseDares&&player.dareStreak>=reverseDareLimit
-        val header=FrameLayout(this);header.addView(backButton{goBack()},FrameLayout.LayoutParams(dp(46),dp(46),Gravity.START));val copy=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;addView(label(trf("ROUND {round}","round" to round),10,true,accent,Gravity.CENTER));addView(label(trf("{player}'s turn","player" to player.name),21,true,ink,Gravity.CENTER))};header.addView(copy,FrameLayout.LayoutParams(-1,dp(52),Gravity.CENTER).apply{leftMargin=dp(54);rightMargin=dp(54)});root.addView(header,lp(-1,dp(56),0))
-        root.addView(label(if(!truthAllowed)"Truth is locked this turn — choose Dare to continue." else if(reverseReady)"Reverse Dare is ready — spin to assign a dare." else "Choose your move",if(truthAllowed)17 else 14,false,if(truthAllowed)muted else accent,Gravity.CENTER),lp(-1,dp(42),0))
-        val truth=button("✦\n${tr("Truth").uppercase()}\n${tr("Be honest")}",if(truthAllowed)truthColor else ColorUtils.blendARGB(surface,outline,.65f),if(truthAllowed)moveButtonInk else muted){if(truthAllowed)openScreen("card"){showCard(nextCard("truth"))}}.apply{textSize=22f;isEnabled=truthAllowed;alpha=if(truthAllowed)1f else .55f};if(reverseReady)root.addView(button("Reverse Dare · spin for player",accent,onAccent()){reverseDarePending=true;showPlayerSpinner()}.apply{textSize=13f},lp(-1,dp(46),2));root.addView(truth,LinearLayout.LayoutParams(-1,0,1f).apply{topMargin=dp(5);bottomMargin=dp(3)})
-        val dare=button("⚡\n${tr("Dare").uppercase()}\n${tr("Take the challenge")}",dareColor,moveButtonInk){openScreen("card"){showCard(nextCard("dare"))}}.apply{textSize=22f};root.addView(dare,LinearLayout.LayoutParams(-1,0,1f).apply{topMargin=dp(3);bottomMargin=dp(2)})
+        currentScreen="card"
+        showCard(nextCard())
     }
     private fun comfortAdjustedLevel(active:Player, target:Player?=null):String {
         val levels=listOf("soft","hot","hard","extreme")
         val selectedIndex=levels.indexOf(selectedLevel).coerceAtLeast(0)
-        val involved=listOfNotNull(active,target).filter { premium && it.comfortEnabled }
+        val involved=listOfNotNull(active,target).filter { it.comfortEnabled }
         val allowedIndex=involved.minOfOrNull { ((it.comfort-1)*4/10).coerceIn(0,3) } ?: selectedIndex
         return levels[min(selectedIndex,allowedIndex)]
     }
-    private fun nextCard(kind:String):Card {
+    private fun nextCard():Card {
         val active=players[turn%players.size]
         if(selectedLevel=="mydares") {
             val source=if(customCards.isNotEmpty()) customCards else decks["soft"].orEmpty()
-            val pool=source.filter { it.kind==kind && (!it.text.contains("{Y}") || eligibleTargets(active).isNotEmpty()) }
-            return if(pool.isEmpty()) Card(kind,"No prompt available for the current player preferences.") else pool.random()
+            return if(source.isEmpty()) Card("never","No prompt is available for this level.") else source.random()
         }
         val personalLevel=comfortAdjustedLevel(active)
-        val personalCards=decks[personalLevel].orEmpty().filter { it.kind==kind && !it.text.contains("{Y}") }
-        val targetedCards=eligibleTargets(active).flatMap { target ->
-            decks[comfortAdjustedLevel(active,target)].orEmpty()
-                .filter { it.kind==kind && it.text.contains("{Y}") }
-                .map { Card(it.kind,it.text,target.name) }
-        }
-        val pool=personalCards + targetedCards
-        return if(pool.isEmpty()) Card(kind,"No prompt available for the current player preferences.") else pool.random()
+        val pool=decks[personalLevel].orEmpty()
+        return if(pool.isEmpty()) Card("never","No prompt is available for this level.") else pool.random()
     }
     private fun showCard(card:Card){
-        currentCard=card;val player=players[turn%players.size];val doneTone=Color.rgb(52,229,176);val next=button("Done · next turn →",surface,doneTone){if(card.kind=="truth"){player.truthStreak++;player.dareStreak=0}else{player.truthStreak=0;player.dareStreak++};saveState();if(navigationStack.isNotEmpty()&&navigationStack.last()=="choices")navigationStack.removeLast();currentScreen="spinner";showPlayerSpinner()}.apply{background=toneOutline(doneTone);setTextColor(doneTone);textSize=16f;minHeight=dp(72);fitSingleLine(this,10,16)};val choose=!(limitTruths&&player.truthStreak>=truthLimit);val dock=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL};if(choose){val again=button("Choose again",accent,onAccent()){activeTimer?.cancel();currentScreen="choices";showChoices()}.apply{textSize=16f;fitSingleLine(this,10,16)};dock.addView(again,LinearLayout.LayoutParams(0,dp(72),.48f).apply{rightMargin=dp(8)});dock.addView(next,LinearLayout.LayoutParams(0,dp(72),.52f))}else dock.addView(next,LinearLayout.LayoutParams(-1,dp(72)))
-        val root=base(scroll=false);val header=FrameLayout(this);header.addView(backButton{goBack()},FrameLayout.LayoutParams(dp(46),dp(46),Gravity.START or Gravity.CENTER_VERTICAL));header.addView(label(if(card.kind=="truth")"Truth time" else "Dare time",22,true,ink,Gravity.CENTER),FrameLayout.LayoutParams(-1,dp(46),Gravity.CENTER));val speaker=ImageButton(this).apply{setImageResource(if(ttsEnabled)R.drawable.ic_volume_on else R.drawable.ic_volume_off);setColorFilter(accent,android.graphics.PorterDuff.Mode.SRC_IN);background=accentOutline(23);setPadding(dp(11),dp(11),dp(11),dp(11));contentDescription=if(ttsEnabled)"Mute speech" else "Enable speech";setOnClickListener{if(ttsEnabled)textToSpeech?.stop();animate().rotationBy(180f).setDuration(180).withEndAction{ttsEnabled=!ttsEnabled;saveState();showCard(card)}.start()}};header.addView(speaker,FrameLayout.LayoutParams(dp(46),dp(46),Gravity.END or Gravity.CENTER_VERTICAL));root.addView(header,lp(-1,dp(46),0));val display=renderPrompt(card.text,player,card.targetName);if(ttsEnabled)textToSpeech?.speak(display,TextToSpeech.QUEUE_FLUSH,null,"prompt");val c=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;background=shape(surface,30,1);setPadding(dp(18),dp(18),dp(18),dp(18));addView(promptLabel(display))};root.addView(c,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(10),0,dp(8))});root.addView(dock,LinearLayout.LayoutParams(-1,dp(72)).apply{setMargins(0,0,0,dp(8))})
+        currentCard=card;val player=players[turn%players.size];val doneTone=Color.rgb(52,229,176);val next=button("Done · next turn →",surface,doneTone){saveState();currentScreen="spinner";showPlayerSpinner()}.apply{background=toneOutline(doneTone);setTextColor(doneTone);textSize=16f;minHeight=dp(72);fitSingleLine(this,10,16)};val dock=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL};val again=button("Choose again",accent,onAccent()){activeTimer?.cancel();showCard(nextCard())}.apply{textSize=16f;fitSingleLine(this,10,16)};dock.addView(again,LinearLayout.LayoutParams(0,dp(72),.48f).apply{rightMargin=dp(8)});dock.addView(next,LinearLayout.LayoutParams(0,dp(72),.52f))
+        val root=base(scroll=false);val header=FrameLayout(this);header.addView(backButton{goBack()},FrameLayout.LayoutParams(dp(46),dp(46),Gravity.START or Gravity.CENTER_VERTICAL));header.addView(label("Never Have I Ever",22,true,ink,Gravity.CENTER),FrameLayout.LayoutParams(-1,dp(46),Gravity.CENTER));val speaker=ImageButton(this).apply{setImageResource(if(ttsEnabled)R.drawable.ic_volume_on else R.drawable.ic_volume_off);setColorFilter(accent,android.graphics.PorterDuff.Mode.SRC_IN);background=accentOutline(23);setPadding(dp(11),dp(11),dp(11),dp(11));contentDescription=if(ttsEnabled)"Mute speech" else "Enable speech";setOnClickListener{if(ttsEnabled)textToSpeech?.stop();animate().rotationBy(180f).setDuration(180).withEndAction{ttsEnabled=!ttsEnabled;saveState();showCard(card)}.start()}};header.addView(speaker,FrameLayout.LayoutParams(dp(46),dp(46),Gravity.END or Gravity.CENTER_VERTICAL));root.addView(header,lp(-1,dp(46),0));val display=renderPrompt(card.text,player);if(ttsEnabled)textToSpeech?.speak(display,TextToSpeech.QUEUE_FLUSH,null,"prompt");val c=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;background=shape(surface,30,1);setPadding(dp(18),dp(18),dp(18),dp(18));addView(promptLabel(display))};root.addView(c,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(10),0,dp(8))});root.addView(dock,LinearLayout.LayoutParams(-1,dp(72)).apply{setMargins(0,0,0,dp(8))})
     }
     private fun startTimer(seconds:Int,tv:TextView){activeTimer?.cancel();activeTimer=object:CountDownTimer(seconds*1000L,1000){override fun onTick(ms:Long){tv.text="${max(1,ms/1000)} s"};override fun onFinish(){tv.text="Time's up!";android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION,90).startTone(android.media.ToneGenerator.TONE_PROP_BEEP2)}}.start()}
     private fun parseSeconds(s:String):Int { val m=Regex("(\\d+)\\s*(seconds?|secs?|minutes?|mins?)",RegexOption.IGNORE_CASE).find(s)?:return if(s.contains("half a minute",true))30 else 0;val n=m.groupValues[1].toInt();return if(m.groupValues[2].lowercase().startsWith("m"))n*60 else n }
@@ -934,17 +923,16 @@ If this policy changes, the current text will be provided in the app and on its 
         background=shape(surface,15,1); setPadding(dp(12),dp(12),dp(12),dp(12)); setOnClickListener { action() }
     }
     private fun showCustomCards(){
-        val root=base(); title(root,"My truths and dares")
-        root.addView(label("Create cards for your group, then choose whether a game uses only your cards or mixes them with the regular decks.",17,false,muted).apply{setPadding(0,dp(20),0,dp(16))},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        val root=base(); title(root,"My custom cards")
+        root.addView(label("Create your own Never Have I Ever statements for the group.",17,false,muted).apply{setPadding(0,dp(20),0,dp(16))},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
         customCards.forEachIndexed{i,c->
             val row=card(root,6); val line=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL}
-            line.addView(label(c.kind.uppercase(),14,true,accent),LinearLayout.LayoutParams(dp(84),-2))
             line.addView(label(c.text,17,false,ink),LinearLayout.LayoutParams(0,-2,1f))
             line.addView(cardAction(R.drawable.ic_edit,"Edit card"){editCustom(i)},lp(dp(48),dp(48),0))
             line.addView(cardAction(R.drawable.ic_delete,"Delete card"){customCards.removeAt(i);saveState();showCustomCards()},lp(dp(48),dp(48),3))
             row.addView(line)
         }
-        val addCustom=button("Add a custom truth or dare",accent,onAccent()){editCustom(-1)};root.addView(addCustom,lp(-1,dp(62),10).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        val addCustom=button("Add a custom statement",accent,onAccent()){editCustom(-1)};root.addView(addCustom,lp(-1,dp(62),10).apply{leftMargin=dp(16);rightMargin=dp(16)})
         val manage=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; isClickable=true; setPadding(dp(18),dp(15),dp(18),dp(15)); background=shape(surface,22,1); setOnClickListener { openScreen("manage"){manageCards()} } }
         manage.addView(label("Manage your cards",17,true)); manage.addView(label("Import, export, and organize your custom cards",12,false,muted).apply { setPadding(0,dp(4),0,0) })
         root.addView(manage,lp(-1,-2,8).apply{leftMargin=dp(16);rightMargin=dp(16)})
@@ -953,23 +941,15 @@ If this policy changes, the current text will be provided in the app and on its 
         val old=if(index>=0)customCards[index] else null
         val dialog=Dialog(this)
         val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=shape(surface,28,1); setPadding(dp(22),dp(22),dp(22),dp(20)) }
-        form.addView(label(if(old==null)"My truths and dares" else "Edit custom card",22,true))
-        var selected=old?.kind ?: "truth"
-        val picker=LinearLayout(this).apply { gravity=Gravity.CENTER; setPadding(0,dp(18),0,dp(10)) }
-        val options=mutableListOf<TextView>()
-        fun option(kind:String):TextView = button(kind.replaceFirstChar { it.titlecase() },surface,ink) { selected=kind; options.forEach { view -> val active=view.tag==selected; view.background=if(active)accentOutline(18)else shape(surface,18,1); view.setTextColor(if(active)accent else ink) } }.apply { tag=kind; textSize=15f; minHeight=dp(54) }
-        val truth=option("truth"); val dare=option("dare"); options.add(truth); options.add(dare)
-        picker.addView(truth,LinearLayout.LayoutParams(0,dp(54),1f).apply { rightMargin=dp(5) }); picker.addView(dare,LinearLayout.LayoutParams(0,dp(54),1f).apply { leftMargin=dp(5) })
-        options.forEach { view -> val active=view.tag==selected; view.background=if(active)accentOutline(18)else shape(surface,18,1); view.setTextColor(if(active)accent else ink) }
-        form.addView(picker)
+        form.addView(label(if(old==null)"Add a custom statement" else "Edit custom card",22,true).apply{setPadding(0,0,0,dp(14))})
         val input=EditText(this).apply { hint=tr("Write a custom card"); setText(old?.text?:""); setTextColor(ink); setHintTextColor(muted); textSize=17f; gravity=Gravity.TOP; minLines=4; background=shape(this@MainActivity.background,18,1); setPadding(dp(14),dp(14),dp(14),dp(14)) }
         form.addView(input,lp(-1,dp(150),4))
         val actions=LinearLayout(this).apply { gravity=Gravity.END or Gravity.CENTER_VERTICAL; setPadding(0,dp(16),0,0) }
-        actions.addView(button("Cancel",surface,muted){dialog.dismiss()},lp(dp(122),dp(54),0)); actions.addView(button(if(old==null)"Add" else "Save",accent,onAccent()){ val value=input.text.toString().trim(); if(value.isNotEmpty()){if(old==null)customCards.add(Card(selected,value))else{old.kind=selected;old.text=value};saveState();dialog.dismiss();showCustomCards()} },lp(dp(122),dp(54),8))
+        actions.addView(button("Cancel",surface,muted){dialog.dismiss()},lp(dp(122),dp(54),0)); actions.addView(button(if(old==null)"Add" else "Save",accent,onAccent()){ val value=input.text.toString().trim(); if(value.isNotEmpty()){if(old==null)customCards.add(Card("never",value))else{old.kind="never";old.text=value};saveState();dialog.dismiss();showCustomCards()} },lp(dp(122),dp(54),8))
         form.addView(actions)
         dialog.setContentView(form); dialog.show(); dialog.window?.apply { setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)); setLayout((resources.displayMetrics.widthPixels*.90f).toInt(),-2); attributes=attributes.apply { dimAmount=.48f }; addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND) }
     }
-    private fun manageCards(){val root=base();title(root,"Manage your cards");root.addView(label("Export, import, or delete your custom truths and dares.",17,false,muted).apply{setPadding(0,dp(20),0,dp(12))},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)});val destructive=Color.rgb(211,47,47);val delete=button("Delete all cards",surface,destructive){customCards.clear();saveState();showCustomCards()}.apply{background=toneOutline(destructive);setTextColor(destructive)};listOf(button("Export cards",accent,onAccent()){exportCards()},button("Import cards",accent,onAccent()){importCards()},delete).forEach{root.addView(it,lp(-1,dp(62),6).apply{leftMargin=dp(16);rightMargin=dp(16)})}}
+    private fun manageCards(){val root=base();title(root,"Manage your cards");root.addView(label("Export, import, or delete your custom Never Have I Ever statements.",17,false,muted).apply{setPadding(0,dp(20),0,dp(12))},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)});val destructive=Color.rgb(211,47,47);val delete=button("Delete all cards",surface,destructive){customCards.clear();saveState();showCustomCards()}.apply{background=toneOutline(destructive);setTextColor(destructive)};listOf(button("Export cards",accent,onAccent()){exportCards()},button("Import cards",accent,onAccent()){importCards()},delete).forEach{root.addView(it,lp(-1,dp(62),6).apply{leftMargin=dp(16);rightMargin=dp(16)})}}
     private fun exportCards(){
         exportCardsLauncher.launch("never-have-i-ever-cards.json")
     }
@@ -987,9 +967,9 @@ If this policy changes, the current text will be provided in the app and on its 
         try {
             val raw=contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
             val imported=mutableListOf<Card>()
-            fun collect(value:Any?){ when(value){ is org.json.JSONArray -> for(i in 0 until value.length()) collect(value.opt(i)); is JSONObject -> { val kind=value.optString("kind",value.optString("type")).lowercase(); val text=value.optString("text",value.optString("prompt",value.optString("content",value.optString("card")))).trim(); if(kind in listOf("truth","dare") && text.isNotEmpty()) imported.add(Card(kind,text)); value.keys().forEach { key -> if(key !in listOf("kind","type","text","prompt","content","card")) collect(value.opt(key)) } } } }
+            fun collect(value:Any?){ when(value){ is org.json.JSONArray -> for(i in 0 until value.length()) collect(value.opt(i)); is JSONObject -> { val text=value.optString("text",value.optString("prompt",value.optString("content",value.optString("card")))).trim(); if(text.isNotEmpty()) imported.add(Card("never",text)); value.keys().forEach { key -> if(key !in listOf("kind","type","text","prompt","content","card")) collect(value.opt(key)) } } } }
             runCatching { collect(JSONObject(raw)) }.getOrElse { runCatching { collect(org.json.JSONArray(raw)) } }
-            if(imported.isEmpty()) raw.lineSequence().forEach { line -> Regex("^(TRUTH|DARE)\\s*:\\s*(.+)$",RegexOption.IGNORE_CASE).find(line.trim())?.let { imported.add(Card(it.groupValues[1].lowercase(),it.groupValues[2].trim())) } }
+            if(imported.isEmpty()) raw.lineSequence().map{it.trim()}.filter{it.isNotEmpty()}.forEach { imported.add(Card("never",it.removePrefix("Never Have I Ever:").trim())) }
             if(imported.isEmpty()) throw IllegalArgumentException("No cards found")
             customCards.addAll(imported); saveState(); Toast.makeText(this,"Imported ${imported.size} cards.",Toast.LENGTH_SHORT).show(); showCustomCards()
         } catch(e:Exception) { Toast.makeText(this,"Could not read that card file.",Toast.LENGTH_LONG).show() }
@@ -1167,7 +1147,7 @@ If this policy changes, the current text will be provided in the app and on its 
         queryProducts()
         val root=base(); title(root,"Premium plans")
         root.addView(premiumSupportBanner(),lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16);topMargin=dp(16);bottomMargin=dp(10) })
-        root.addView(label("Unlock every level, custom cards, comfort-zone calibration, and gameplay settings.",14,false,muted).apply { setPadding(0,0,0,dp(10)) },lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16) })
+        root.addView(label("Unlock every level and create your own custom cards.",14,false,muted).apply { setPadding(0,0,0,dp(10)) },lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16) })
         var selected=premiumAnnualProductId
         val rows=mutableListOf<TextView>()
         fun refresh(){ rows.forEach { row -> val active=row.tag==selected; row.background=if(active)accentOutline(22)else shape(surface,22,1);row.setTextColor(if(active)accent else ink) } }
@@ -1192,7 +1172,7 @@ If this policy changes, the current text will be provided in the app and on its 
         val head=FrameLayout(this); head.addView(label(if(firstLaunch)"Welcome offer" else "Unlock Premium",22,true,ink,Gravity.CENTER),FrameLayout.LayoutParams(-1,dp(46),Gravity.CENTER)); head.addView(closeButton{dialog.dismiss()},FrameLayout.LayoutParams(dp(42),dp(42),Gravity.END or Gravity.CENTER_VERTICAL));shell.addView(head,lp(-1,dp(46),0))
         shell.addView(label(if(firstLaunch)"Your introductory discounts are ready." else "Get every level and setting.",14,false,muted,Gravity.CENTER).apply{setPadding(0,dp(4),0,dp(12))})
         shell.addView(premiumSupportBanner(),lp(-1,-2,6))
-        shell.addView(label("✓ Unlock Hot, Naughty, and custom cards\n✓ Create your own truths and dares\n✓ Enable all gameplay settings",13,true,ink).apply{setLineSpacing(dp(5).toFloat(),1f);setPadding(dp(12),dp(10),dp(12),dp(10));background=shape(ColorUtils.blendARGB(surface,accent,.10f),18,1)},lp(-1,-2,10))
+        shell.addView(label("✓ Unlock Hot and Naughty levels\n✓ Create and manage custom statements\n✓ Support independent development",13,true,ink).apply{setLineSpacing(dp(5).toFloat(),1f);setPadding(dp(12),dp(10),dp(12),dp(10));background=shape(ColorUtils.blendARGB(surface,accent,.10f),18,1)},lp(-1,-2,10))
         var selected=if(premiumAnnualProductId in planIds) premiumAnnualProductId else planIds.first(); val rows=mutableListOf<TextView>()
         fun refresh(){ rows.forEach { row -> val active=row.tag==selected; row.setTextColor(if(active)accent else ink); row.background=if(active)accentOutline(18)else shape(surface,18,1) } }
         fun plan(id:String,title:String,detail:String){ val row=label("$title\n${prices[id] ?: "Price shown by Google Play"} · $detail",15,true,ink,Gravity.CENTER_VERTICAL).apply { tag=id; setPadding(dp(16),0,dp(16),0); isClickable=true; setOnClickListener{selected=id;refresh()} }; rows.add(row);shell.addView(row,lp(-1,dp(62),4));refresh() }
@@ -1231,17 +1211,15 @@ If this policy changes, the current text will be provided in the app and on its 
             val plans=obj.optJSONObject("plans") ?: obj
             mapOf("soft" to "casual","hot" to "flirty","hard" to "hot","extreme" to "naughty").forEach { (level,sourceLevel) ->
                 val list=mutableListOf<Card>(); val plan=plans.optJSONObject(sourceLevel) ?: plans.optJSONObject(level)
-                listOf("truths" to "truth","dares" to "dare").forEach { (key,kind) ->
-                    val prompts=plan?.optJSONArray(key)
-                    if(prompts!=null) for(i in 0 until prompts.length()){
-                        val item=prompts.get(i); val text=if(item is JSONObject)item.optString("text") else item.toString()
-                        if(text.isNotBlank()) list.add(Card(kind,text))
-                    }
+                val prompts=plan?.optJSONArray("never_have_i_ever")
+                if(prompts!=null) for(i in 0 until prompts.length()){
+                    val item=prompts.get(i); val text=if(item is JSONObject)item.optString("text") else item.toString()
+                    if(text.isNotBlank()) list.add(Card("never",text))
                 }
                 decks[level]=list
             }
         }catch(_:Exception){
-            val fallback=mutableListOf(Card("truth","What is a small thing that made you smile today?"),Card("dare","Dance with no music for 30 seconds."))
+            val fallback=mutableListOf(Card("never","{X}: Never have I ever forgotten why I walked into a room."))
             decks["soft"]=fallback;decks["hot"]=fallback;decks["hard"]=fallback;decks["extreme"]=fallback
         }
     }    private fun loadState(){themeMode=prefs.getString("theme","dark")?:"dark";useSystemColors=prefs.getBoolean("systemColors",false);selectedLevel=prefs.getString("selectedLevel","soft")?:"soft";limitTruths=prefs.getBoolean("limit",false);truthLimit=prefs.getInt("truthLimit",2).coerceIn(1,5);reverseDares=prefs.getBoolean("reverseDares",false);reverseDareLimit=prefs.getInt("reverseDareLimit",2).coerceIn(1,5);premium=hasValidCachedPremiumEntitlement();lifetimePremium=hasValidCachedLifetimeEntitlement();ttsEnabled=prefs.getBoolean("ttsEnabled",false);val json=prefs.getString("players","[]")?:"[]";try{val a=org.json.JSONArray(json);for(i in 0 until a.length()){val x=a.getJSONObject(i);players.add(Player(x.optString("name"),x.optString("gender","").let{if(it=="Other")"" else it},x.optString("preference",""),x.optInt("truthStreak"),x.optInt("dareStreak"),x.optInt("comfort",5).coerceIn(1,10),x.optBoolean("comfortEnabled",false),MutableList(x.optJSONArray("specific")?.length()?:0){j->x.optJSONArray("specific")?.optString(j)?:""}.filter{it.isNotBlank()}.toMutableSet()))}}catch(_:Exception){};val cards=prefs.getString("cards","[]")?:"[]";try{val a=org.json.JSONArray(cards);for(i in 0 until a.length()){val x=a.getJSONObject(i);customCards.add(Card(x.optString("kind"),x.optString("text")))}}catch(_:Exception){}}
