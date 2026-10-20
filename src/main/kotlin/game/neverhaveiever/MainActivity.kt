@@ -551,16 +551,16 @@ class MainActivity : ComponentActivity() {
         form.addView(label("Name",12,true).apply{setPadding(0,dp(12),0,dp(4))})
         val name=EditText(this).apply{setText(player.name);setTextColor(ink);setSingleLine(true);textSize=17f;background=shape(this@MainActivity.background,14,1);setPadding(dp(12),0,dp(12),0)}
         form.addView(name,lp(-1,dp(50),10))
-        fun comfortLabel(value:Int)=trf("Comfort-zone calibration · {value}/10","value" to value)
-        var comfortEnabled=player.comfortEnabled
-        val calibration=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=shape(surface,18,1);setPadding(dp(16),dp(12),dp(16),dp(12))}
+        fun comfortLabel(value:Int)=trf("Comfort-zone calibration · {value}/10","value" to value)+if(!premium)"  🔒" else ""
+        var comfortEnabled=player.comfortEnabled&&premium
+        val calibration=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=shape(if(premium)surface else ColorUtils.blendARGB(surface,outline,.42f),18,1);setPadding(dp(16),dp(12),dp(16),dp(12));isClickable=!premium;setOnClickListener{if(!premium)showPremium()}}
         val calibrationHead=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL}
-        val comfortTitle=label(comfortLabel(player.comfort),14,true,ink)
+        val comfortTitle=label(comfortLabel(player.comfort),14,true,if(premium)ink else muted)
         calibrationHead.addView(comfortTitle,weight(1f))
-        calibrationHead.addView(expressiveToggle(comfortEnabled){on->comfortEnabled=on},lp(dp(58),dp(36),0))
+        calibrationHead.addView(expressiveToggle(comfortEnabled,premium){on->comfortEnabled=on},lp(dp(58),dp(36),0))
         calibration.addView(calibrationHead)
-        calibration.addView(label("Keep prompts within this player's comfort zone.",11,false,muted).apply{setPadding(0,dp(2),0,dp(6))})
-        val comfort=SeekBar(this).apply{max=9;progress=player.comfort-1;progressTintList=android.content.res.ColorStateList.valueOf(accent);thumbTintList=android.content.res.ColorStateList.valueOf(accent);backgroundTintList=android.content.res.ColorStateList.valueOf(outline);minimumHeight=dp(34)}
+        calibration.addView(label(if(premium)"Keep prompts within this player's comfort zone." else "Premium feature · tap to view plans and unlock per-player prompt adjustment.",11,false,muted).apply{setPadding(0,dp(2),0,dp(6))})
+        val comfort=SeekBar(this).apply{max=9;progress=player.comfort-1;progressTintList=android.content.res.ColorStateList.valueOf(accent);thumbTintList=android.content.res.ColorStateList.valueOf(accent);backgroundTintList=android.content.res.ColorStateList.valueOf(outline);minimumHeight=dp(34);isEnabled=premium}
         comfort.setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{override fun onProgressChanged(s:SeekBar?,v:Int,u:Boolean){comfortTitle.text=comfortLabel(v+1)};override fun onStartTrackingTouch(s:SeekBar?){};override fun onStopTrackingTouch(s:SeekBar?){}})
         calibration.addView(comfort,lp(-1,dp(30),0))
         val scale=LinearLayout(this);scale.addView(label("1 · Wholesome & soft",10,false,muted),weight(1f));scale.addView(label("10 · Chaos & spicy",10,false,muted,Gravity.END),weight(1f));calibration.addView(scale)
@@ -569,7 +569,7 @@ class MainActivity : ComponentActivity() {
         val actions=LinearLayout(this)
         val remove=button("Remove player",surface,destructive){players.removeAt(index);saveState();dialog.dismiss()}.apply{background=toneOutline(destructive);setTextColor(destructive);textSize=13f;fitSingleLine(this,9,13)}
         actions.addView(remove,LinearLayout.LayoutParams(0,dp(52),1f).apply{rightMargin=dp(6)})
-        val save=button("Save player",accent,onAccent()){player.name=name.text.toString().trim().ifEmpty{player.name};player.comfort=comfort.progress+1;player.comfortEnabled=comfortEnabled;committed=true;saveState();dialog.dismiss()}.apply{textSize=13f;fitSingleLine(this,9,13)}
+        val save=button("Save player",accent,onAccent()){player.name=name.text.toString().trim().ifEmpty{player.name};player.comfort=comfort.progress+1;player.comfortEnabled=comfortEnabled&&premium;committed=true;saveState();dialog.dismiss()}.apply{textSize=13f;fitSingleLine(this,9,13)}
         actions.addView(save,LinearLayout.LayoutParams(0,dp(52),1f).apply{leftMargin=dp(6)})
         form.addView(actions,lp(-1,dp(52),6))
         dialog.show();dialog.window?.apply{decorView.setPadding(0,0,0,0);setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));setLayout(resources.displayMetrics.widthPixels-dp(32),WindowManager.LayoutParams.WRAP_CONTENT);setGravity(Gravity.CENTER);attributes=attributes.apply{dimAmount=.4f};addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)}
@@ -704,7 +704,7 @@ class MainActivity : ComponentActivity() {
     }
     private fun showGameplay(){
         val root=base();title(root,"Gameplay");divider(root,16)
-        root.addView(label("No additional gameplay settings are needed. Adjust each player's comfort zone from their player card.",14,false,muted,Gravity.CENTER).apply{setPadding(dp(18),dp(20),dp(18),dp(20));background=shape(surface,22,1);setLineSpacing(dp(3).toFloat(),1f)},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        root.addView(label("No additional gameplay settings are needed. Premium comfort-zone calibration is available from each player card.",14,false,muted,Gravity.CENTER).apply{setPadding(dp(18),dp(20),dp(18),dp(20));background=shape(surface,22,1);setLineSpacing(dp(3).toFloat(),1f)},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
     }
     private fun showAbout(){
         val root=base(); title(root,"General Information")
@@ -748,9 +748,10 @@ class MainActivity : ComponentActivity() {
     private fun gameRuleItems():List<GameRule> = listOf(
         GameRule("Play safely and respect every player","Participation is always voluntary. Anyone may skip a statement, change their mind, or stop playing. Stop immediately if someone feels uncomfortable.",highlighted=true),
         GameRule("1. Add players","Add at least two players to the game."),
-        GameRule("2. Edit their preferences","Use the free comfort-zone calibration to keep prompts appropriate for each player."),
+        GameRule("2. Edit their preferences","Use Premium comfort-zone calibration to keep prompts appropriate for each player."),
         GameRule("3. Choose the game level","Choose Casual, Flirty, Hot, Naughty, or your custom cards."),
         GameRule("4. Start the game","Tap Let's play. The wheel chooses a player and the app shows a Never Have I Ever statement."),
+        GameRule("5. Respond to the statement","If you've never done it, you're safe. Otherwise, take a sip or put a finger down."),
         GameRule("My custom cards","Create, edit, import, export, and play your own statements.",premium=true)
     )
     private fun gameRulesPanel():LinearLayout = LinearLayout(this).apply {
@@ -765,7 +766,7 @@ class MainActivity : ComponentActivity() {
                 addView(label(if(rule.premium)"PREMIUM · ${rule.title}" else rule.title,14,true,if(rule.highlighted)safetyGreen else if(rule.premium)accent else ink))
                 addView(label(rule.detail,12,false,muted).apply{setPadding(0,dp(5),0,0);setLineSpacing(dp(2).toFloat(),1f)})
             }
-            addView(card,lp(-1,-2,if(index==rules.lastIndex)0 else 7))
+            addView(card,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=if(index==rules.lastIndex)0 else dp(7)})
         }
     }
     private fun showGameRules(){
@@ -779,7 +780,7 @@ class MainActivity : ComponentActivity() {
         val shell=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=shape(surface,28,1);clipToOutline=true;setPadding(dp(16),dp(18),dp(16),dp(18))}
         shell.addView(label("Game rules",22,true))
         shell.addView(label("A quick guide before your first game.",13,false,muted).apply{setPadding(0,dp(6),0,dp(10))})
-        val scroll=ScrollView(this).apply{setPadding(0,0,dp(2),0)};styleScrollBar(scroll)
+        val scroll=ScrollView(this).apply{isVerticalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER}
         scroll.addView(gameRulesPanel().apply{setPadding(0,0,0,dp(8))})
         shell.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         shell.addView(button("Start playing",accent,onAccent()){prefs.edit().putBoolean("gameRulesSeen",true).apply();dialog.dismiss();continueAfterFirstRun()},lp(-1,dp(54),0))
@@ -903,7 +904,7 @@ If this policy changes, the current text will be provided in the app and on its 
     private fun comfortAdjustedLevel(active:Player, target:Player?=null):String {
         val levels=listOf("soft","hot","hard","extreme")
         val selectedIndex=levels.indexOf(selectedLevel).coerceAtLeast(0)
-        val involved=listOfNotNull(active,target).filter { it.comfortEnabled }
+        val involved=listOfNotNull(active,target).filter { premium && it.comfortEnabled }
         val allowedIndex=involved.minOfOrNull { ((it.comfort-1)*4/10).coerceIn(0,3) } ?: selectedIndex
         return levels[min(selectedIndex,allowedIndex)]
     }
@@ -1153,7 +1154,7 @@ If this policy changes, the current text will be provided in the app and on its 
         queryProducts()
         val root=base(); title(root,"Premium plans")
         root.addView(premiumSupportBanner(),lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16);topMargin=dp(16);bottomMargin=dp(10) })
-        root.addView(label("Unlock every level and create your own custom cards.",14,false,muted).apply { setPadding(0,0,0,dp(10)) },lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16) })
+        root.addView(label("Unlock every level, comfort-zone calibration, and custom cards.",14,false,muted).apply { setPadding(0,0,0,dp(10)) },lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16) })
         var selected=premiumAnnualProductId
         val rows=mutableListOf<TextView>()
         fun refresh(){ rows.forEach { row -> val active=row.tag==selected; row.background=if(active)accentOutline(22)else shape(surface,22,1);row.setTextColor(if(active)accent else ink) } }
@@ -1178,7 +1179,7 @@ If this policy changes, the current text will be provided in the app and on its 
         val head=FrameLayout(this); head.addView(label(if(firstLaunch)"Welcome offer" else "Unlock Premium",22,true,ink,Gravity.CENTER),FrameLayout.LayoutParams(-1,dp(46),Gravity.CENTER)); head.addView(closeButton{dialog.dismiss()},FrameLayout.LayoutParams(dp(42),dp(42),Gravity.END or Gravity.CENTER_VERTICAL));shell.addView(head,lp(-1,dp(46),0))
         shell.addView(label(if(firstLaunch)"Your introductory discounts are ready." else "Get every level and setting.",14,false,muted,Gravity.CENTER).apply{setPadding(0,dp(4),0,dp(12))})
         shell.addView(premiumSupportBanner(),lp(-1,-2,6))
-        shell.addView(label("✓ Unlock Hot and Naughty levels\n✓ Create and manage custom statements\n✓ Support independent development",13,true,ink).apply{setLineSpacing(dp(5).toFloat(),1f);setPadding(dp(12),dp(10),dp(12),dp(10));background=shape(ColorUtils.blendARGB(surface,accent,.10f),18,1)},lp(-1,-2,10))
+        shell.addView(label("✓ Unlock Hot and Naughty levels\n✓ Calibrate each player's comfort zone\n✓ Create and manage custom statements\n✓ Support independent development",13,true,ink).apply{setLineSpacing(dp(5).toFloat(),1f);setPadding(dp(12),dp(10),dp(12),dp(10));background=shape(ColorUtils.blendARGB(surface,accent,.10f),18,1)},lp(-1,-2,10))
         var selected=if(premiumAnnualProductId in planIds) premiumAnnualProductId else planIds.first(); val rows=mutableListOf<TextView>()
         fun refresh(){ rows.forEach { row -> val active=row.tag==selected; row.setTextColor(if(active)accent else ink); row.background=if(active)accentOutline(18)else shape(surface,18,1) } }
         fun plan(id:String,title:String,detail:String){ val row=label("$title\n${prices[id] ?: "Price shown by Google Play"} · $detail",15,true,ink,Gravity.CENTER_VERTICAL).apply { tag=id; setPadding(dp(16),0,dp(16),0); isClickable=true; setOnClickListener{selected=id;refresh()} }; rows.add(row);shell.addView(row,lp(-1,dp(62),4));refresh() }
