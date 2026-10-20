@@ -121,6 +121,7 @@ class MainActivity : ComponentActivity() {
             "home" -> showHome()
             "settings" -> showSettings()
             "appearance" -> showAppearance()
+            "gameplay" -> showGameplay()
             "language" -> showLanguage()
             "help" -> showHelp()
             "about" -> showAbout()
@@ -583,6 +584,7 @@ class MainActivity : ComponentActivity() {
         val chosenLanguage=selectedLanguage()
         settingsRow(group,"language","Language",languageDisplayName(chosenLanguage),{openScreen("language"){showLanguage()}},28,3,3)
         settingsRow(group,"appearance","Appearance","Themes and colors",{openScreen("appearance"){showAppearance()}},3,3,3)
+        settingsRow(group,"gameplay","Gameplay","Rules and preferences",{openScreen("gameplay"){showGameplay()}},3,3,3)
         settingsRow(group,"help","Help","Support tickets, feature requests",{openScreen("help"){showHelp()}},3,3,3)
         settingsRow(group,"about","General Information","Privacy policy, Game rules, App info",{openScreen("about"){showAbout()}},3,28,3)
     }    private fun settingsRow(root:LinearLayout,icon:String,name:String,desc:String,action:()->Unit,topRadius:Int=24,bottomRadius:Int=24,verticalMargin:Int=0,showArrow:Boolean=true){
@@ -700,6 +702,10 @@ class MainActivity : ComponentActivity() {
         c.addView(copy,weight(1f))
         c.addView(expressiveToggle(useSystemColors){ on->useSystemColors=on;saveState();showAppearance() },lp(dp(64),dp(40),0))
     }
+    private fun showGameplay(){
+        val root=base();title(root,"Gameplay");divider(root,16)
+        root.addView(label("No additional gameplay settings are needed. Adjust each player's comfort zone from their player card.",14,false,muted,Gravity.CENTER).apply{setPadding(dp(18),dp(20),dp(18),dp(20));background=shape(surface,22,1);setLineSpacing(dp(3).toFloat(),1f)},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+    }
     private fun showAbout(){
         val root=base(); title(root,"General Information")
         divider(root,16)
@@ -738,15 +744,14 @@ class MainActivity : ComponentActivity() {
         c.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         root.addView(c,LinearLayout.LayoutParams(-1,0,1f).apply { topMargin=dp(10) })
     }
-    private data class GameRule(val title:String,val detail:String,val highlighted:Boolean=false,val optional:Boolean=false)
+    private data class GameRule(val title:String,val detail:String,val highlighted:Boolean=false,val premium:Boolean=false)
     private fun gameRuleItems():List<GameRule> = listOf(
         GameRule("Play safely and respect every player","Participation is always voluntary. Anyone may skip a statement, change their mind, or stop playing. Stop immediately if someone feels uncomfortable.",highlighted=true),
         GameRule("1. Add players","Add at least two players to the game."),
         GameRule("2. Edit their preferences","Use the free comfort-zone calibration to keep prompts appropriate for each player."),
         GameRule("3. Choose the game level","Choose Casual, Flirty, Hot, Naughty, or your custom cards."),
         GameRule("4. Start the game","Tap Let's play. The wheel chooses a player and the app shows a Never Have I Ever statement."),
-        GameRule("My custom cards","Create, edit, import, export, and play your own statements.",optional=true),
-        GameRule("Prompt narration","Use the speaker button to read the displayed statement aloud.",optional=true)
+        GameRule("My custom cards","Create, edit, import, export, and play your own statements.",premium=true)
     )
     private fun gameRulesPanel():LinearLayout = LinearLayout(this).apply {
         orientation=LinearLayout.VERTICAL
@@ -755,8 +760,9 @@ class MainActivity : ComponentActivity() {
             val card=LinearLayout(this@MainActivity).apply {
                 orientation=LinearLayout.VERTICAL
                 setPadding(dp(14),dp(12),dp(14),dp(12))
-                background=if(rule.highlighted) shape(ColorUtils.blendARGB(surface,accent,if(isDark()).18f else .10f),18,2,accent) else shape(surface,18,1)
-                addView(label(if(rule.optional)"OPTIONAL · ${rule.title}" else rule.title,14,true,if(rule.highlighted)accent else ink))
+                val safetyGreen=Color.rgb(52,229,176)
+                background=if(rule.highlighted) shape(ColorUtils.blendARGB(surface,safetyGreen,if(isDark()).18f else .10f),18,2,safetyGreen) else shape(surface,18,1)
+                addView(label(if(rule.premium)"PREMIUM · ${rule.title}" else rule.title,14,true,if(rule.highlighted)safetyGreen else if(rule.premium)accent else ink))
                 addView(label(rule.detail,12,false,muted).apply{setPadding(0,dp(5),0,0);setLineSpacing(dp(2).toFloat(),1f)})
             }
             addView(card,lp(-1,-2,if(index==rules.lastIndex)0 else 7))
@@ -764,18 +770,18 @@ class MainActivity : ComponentActivity() {
     }
     private fun showGameRules(){
         val root=base();title(root,"Game rules");divider(root,12)
-        root.addView(label("Follow these steps to start, then explore the optional features whenever you want.",14,false,muted).apply{setPadding(0,0,0,dp(10))},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        root.addView(label("Follow these steps to start, then explore Premium features whenever you want.",14,false,muted).apply{setPadding(0,0,0,dp(10))},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
         root.addView(gameRulesPanel(),lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
     }
     private fun continueAfterFirstRun(){ if(!prefs.getBoolean("premiumWelcomeSeen",false)){offerAfterPrivacy=true;window.decorView.post{requestFirstOffer()}} }
     private fun showGameRulesNotice(){
         val dialog=Dialog(this)
-        val shell=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=shape(surface,28,1);clipToOutline=true;setPadding(dp(18),dp(18),dp(18),dp(18))}
+        val shell=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=shape(surface,28,1);clipToOutline=true;setPadding(dp(16),dp(18),dp(16),dp(18))}
         shell.addView(label("Game rules",22,true))
         shell.addView(label("A quick guide before your first game.",13,false,muted).apply{setPadding(0,dp(6),0,dp(10))})
         val scroll=ScrollView(this).apply{setPadding(0,0,dp(2),0)};styleScrollBar(scroll)
-        scroll.addView(gameRulesPanel().apply{setPadding(0,0,dp(16),dp(8))})
-        shell.addView(scroll,LinearLayout.LayoutParams(-1,0,1f).apply{rightMargin=dp(-16)})
+        scroll.addView(gameRulesPanel().apply{setPadding(0,0,0,dp(8))})
+        shell.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         shell.addView(button("Start playing",accent,onAccent()){prefs.edit().putBoolean("gameRulesSeen",true).apply();dialog.dismiss();continueAfterFirstRun()},lp(-1,dp(54),0))
         dialog.setContentView(shell);dialog.setCancelable(false);dialog.show()
         dialog.window?.apply{setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));val dialogHeight=((resources.displayMetrics.heightPixels*.76f).toInt()+dp(40)).coerceAtMost(resources.displayMetrics.heightPixels-dp(32));setLayout((resources.displayMetrics.widthPixels*.90f).toInt(),dialogHeight);setGravity(Gravity.CENTER);attributes=attributes.apply{dimAmount=.42f;if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S)blurBehindRadius=dp(22)};addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S)addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)}
