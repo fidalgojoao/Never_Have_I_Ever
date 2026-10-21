@@ -577,7 +577,8 @@ class MainActivity : ComponentActivity() {
         val actions=LinearLayout(this)
         val remove=button("Remove player",surface,destructive){players.removeAt(index);saveState();dialog.dismiss()}.apply{background=toneOutline(destructive);setTextColor(destructive);textSize=13f;fitSingleLine(this,9,13)}
         actions.addView(remove,LinearLayout.LayoutParams(0,dp(52),1f).apply{rightMargin=dp(6)})
-        val save=button("Save player",accent,onAccent()){player.name=name.text.toString().trim().ifEmpty{player.name};player.comfort=comfort.progress+1;player.comfortEnabled=comfortEnabled&&premium;committed=true;saveState();dialog.dismiss()}.apply{textSize=13f;fitSingleLine(this,9,13)}
+        val saveTone=readableGreen()
+        val save=button("Save player",surface,saveTone){player.name=name.text.toString().trim().ifEmpty{player.name};player.comfort=comfort.progress+1;player.comfortEnabled=comfortEnabled&&premium;committed=true;saveState();dialog.dismiss()}.apply{background=toneOutline(saveTone);setTextColor(saveTone);textSize=13f;fitSingleLine(this,9,13)}
         actions.addView(save,LinearLayout.LayoutParams(0,dp(52),1f).apply{leftMargin=dp(6)})
         form.addView(actions,lp(-1,dp(52),6))
         dialog.show();dialog.window?.apply{decorView.setPadding(0,0,0,0);setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));setLayout(resources.displayMetrics.widthPixels-dp(32),WindowManager.LayoutParams.WRAP_CONTENT);setGravity(Gravity.CENTER);attributes=attributes.apply{dimAmount=.4f};addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)}
