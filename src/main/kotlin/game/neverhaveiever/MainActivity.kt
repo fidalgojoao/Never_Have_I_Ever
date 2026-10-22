@@ -101,6 +101,7 @@ class MainActivity : ComponentActivity() {
     }
     private val navigationStack = ArrayDeque<String>()
     private var currentScreen = "home"
+    private var pendingSettingsHighlight: String? = null
     private val exportCardsLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> uri?.let { exportCardsTo(it) } }
     private val importCardsLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { importCardsFrom(it) } }
 
@@ -143,6 +144,7 @@ class MainActivity : ComponentActivity() {
             else -> showHome()
         }
     }
+    @android.annotation.SuppressLint("MissingSuperCall","GestureBackNavigation")
     @Deprecated("Handled for legacy Back navigation")
     override fun onBackPressed() { goBack() }
 
@@ -585,18 +587,150 @@ class MainActivity : ComponentActivity() {
     }
     private fun findRadio(group:RadioGroup):String { val id=group.checkedRadioButtonId; return group.findViewById<RadioButton>(id)?.text?.toString() ?: "" }
 
+    private data class SettingSearchItem(
+        val key:String,
+        val title:String,
+        val description:String,
+        val path:String,
+        val screen:String,
+        val aliases:String=""
+    )
+
+    private fun settingsSearchText(value:String):String = when(effectiveLanguage()) {
+        "es" -> when(value){"Search settings"->"Buscar en los ajustes";"Clear search"->"Borrar búsqueda";"No settings found"->"No se encontraron ajustes";else->value}
+        "pt-BR","pt" -> when(value){"Search settings"->"Pesquisar nas configurações";"Clear search"->"Limpar pesquisa";"No settings found"->"Nenhuma configuração encontrada";else->value}
+        else -> value
+    }
+
+    private fun translatedSettingPath(path:String):String = path.split(" › ").joinToString(" › "){tr(it)}
+
+    private fun settingSearchItems():List<SettingSearchItem> {
+        val items=mutableListOf(
+            SettingSearchItem("language:list","Language",languageDisplayName(selectedLanguage()),"Settings › Language","language","locale translation app language"),
+            SettingSearchItem("appearance:theme","Appearance","Themes and colors","Settings › Appearance","appearance","theme colour color scheme"),
+            SettingSearchItem("appearance:theme","Theme","Choose System, Dark, or Light","Settings › Appearance","appearance","colour color scheme mode"),
+            SettingSearchItem("appearance:system","System theme","Follow the device light or dark theme","Settings › Appearance › Theme","appearance","automatic default"),
+            SettingSearchItem("appearance:dark","Dark theme","Always use the dark appearance","Settings › Appearance › Theme","appearance","night black"),
+            SettingSearchItem("appearance:light","Light theme","Always use the light appearance","Settings › Appearance › Theme","appearance","day white"),
+            SettingSearchItem("appearance:system_colors","Use Android system colors","Match the app to your device palette","Settings › Appearance","appearance","dynamic material palette colour"),
+            SettingSearchItem("gameplay:screen","Gameplay","Rules and preferences","Settings › Gameplay","gameplay","game options"),
+            SettingSearchItem("gameplay:comfort","Comfort-zone calibration","Adjust prompt intensity from each player card","Settings › Gameplay","gameplay","premium player intensity"),
+            SettingSearchItem("help:discord","Help","Support tickets and feature requests","Settings › Help","help","support community ideas"),
+            SettingSearchItem("help:discord","Join my Discord","Open the support and community server","Settings › Help","help","support ticket feature request community"),
+            SettingSearchItem("about:list","General Information","Privacy policy, game rules, and app info","Settings › General Information","about","about legal"),
+            SettingSearchItem("rules:content","Game rules","How to play and keep it respectful","Settings › General Information › Game rules","rules","instructions safety players"),
+            SettingSearchItem("privacy:content","Privacy policy","How Never Have I Ever handles your data","Settings › General Information › Privacy policy","privacy","data legal security"),
+            SettingSearchItem("app_info:content","About app","Version and Android compatibility","Settings › General Information › About app","appInfo","app version sdk api android compatibility"),
+            SettingSearchItem("premium:screen","Premium plans","Compare subscriptions and lifetime access","Settings › General Information › Premium plans","premiumPlans","unlock purchase subscription"),
+            SettingSearchItem("premium:monthly","Monthly plan","Premium subscription that renews monthly","Settings › General Information › Premium plans","premiumPlans","purchase"),
+            SettingSearchItem("premium:yearly","Yearly plan","Best-value annual Premium subscription","Settings › General Information › Premium plans","premiumPlans","annual purchase"),
+            SettingSearchItem("premium:lifetime","Lifetime plan","One-time Premium purchase","Settings › General Information › Premium plans","premiumPlans","forever permanent"),
+            SettingSearchItem("premium:continue","Continue purchase","Continue with the selected Premium plan","Settings › General Information › Premium plans","premiumPlans","buy subscribe"),
+            SettingSearchItem("premium:restore","Restore purchases","Restore an existing Premium purchase","Settings › General Information › Premium plans","premiumPlans","recover subscription")
+        )
+        (listOf("system")+supportedLanguages).forEach { code ->
+            val display=languageDisplayName(code)
+            val english=if(code=="system")"device default automatic" else Locale.forLanguageTag(code).getDisplayName(Locale.ENGLISH)
+            items.add(SettingSearchItem("language:$code",display,"Use $display for the app interface","Settings › Language","language","$code $english translation locale"))
+        }
+        return if(premium)items.filterNot{it.key.startsWith("premium:")}else items
+    }
+
+    private fun openSettingSearchResult(item:SettingSearchItem) {
+        (getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)?.hideSoftInputFromWindow(window.decorView.windowToken,0)
+        pendingSettingsHighlight=item.key
+        openScreen(item.screen) {
+            when(item.screen) {
+                "language" -> showLanguage()
+                "appearance" -> showAppearance()
+                "gameplay" -> showGameplay()
+                "help" -> showHelp()
+                "about" -> showAbout()
+                "rules" -> showGameRules()
+                "privacy" -> showPrivacyPolicy()
+                "appInfo" -> showAppInformation()
+                "premiumPlans" -> showPremiumPlans()
+                else -> showSettings()
+            }
+        }
+    }
+
+    private fun markSettingTarget(view:View,key:String) {
+        if(pendingSettingsHighlight!=key)return
+        pendingSettingsHighlight=null
+        view.post {
+            var parent=view.parent
+            while(parent!=null && parent !is ScrollView)parent=parent.parent
+            parent?.let { scroll ->
+                val target=android.graphics.Rect()
+                view.getDrawingRect(target)
+                scroll.offsetDescendantRectToMyCoords(view,target)
+                scroll.smoothScrollTo(0,(target.top-dp(104)).coerceAtLeast(0))
+            }
+            val previous=view.foreground
+            val flash=shape(accent,20,2,accent).apply{alpha=0}
+            view.foreground=flash
+            ValueAnimator.ofInt(0,150,20,180,0,150,0).apply {
+                duration=1350
+                addUpdateListener { flash.alpha=it.animatedValue as Int;view.invalidate() }
+                addListener(object:android.animation.AnimatorListenerAdapter(){override fun onAnimationEnd(animation:android.animation.Animator){view.foreground=previous}})
+                start()
+            }
+        }
+    }
+
     private fun showSettings() {
-        val root=base(); title(root,"Settings")
-        divider(root,16)
+        val root=base(scroll=false);title(root,"Settings",horizontalInset=0)
+        val stage=FrameLayout(this)
+        root.addView(stage,LinearLayout.LayoutParams(-1,0,1f))
+        val content=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(0,0,0,dp(16))}
+        val contentScroll=ScrollView(this).apply{isFillViewport=true;clipToPadding=false;setPadding(0,dp(72),0,0);addView(content)}
+        styleScrollBar(contentScroll)
+        stage.addView(contentScroll,FrameLayout.LayoutParams(-1,-1))
+        val searchShell=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;background=shape(surface,24,1);setPadding(dp(14),0,dp(8),0);elevation=dp(6).toFloat() }
+        searchShell.addView(ImageView(this).apply{setImageResource(android.R.drawable.ic_menu_search);setColorFilter(accent,android.graphics.PorterDuff.Mode.SRC_IN);contentDescription=settingsSearchText("Search settings")},lp(dp(28),dp(28),0))
+        val search=EditText(this).apply { hint=settingsSearchText("Search settings");setSingleLine(true);textSize=16f;setTextColor(ink);setHintTextColor(muted);background=null;setPadding(dp(10),0,dp(6),0);imeOptions=android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH }
+        searchShell.addView(search,LinearLayout.LayoutParams(0,dp(56),1f))
+        val clear=label("×",25,false,muted,Gravity.CENTER).apply{contentDescription=settingsSearchText("Clear search");visibility=View.GONE;isClickable=true;setOnClickListener{search.text.clear();search.requestFocus()}}
+        searchShell.addView(clear,lp(dp(42),dp(42),0))
+        stage.addView(searchShell,FrameLayout.LayoutParams(-1,dp(56),Gravity.TOP))
+        val results=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
+        content.addView(results,lp(-1,-2,0))
         val group=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        root.addView(group,lp(-1,-2,0).apply { leftMargin=dp(16); rightMargin=dp(16) })
+        content.addView(group,lp(-1,-2,0))
         val chosenLanguage=selectedLanguage()
         settingsRow(group,"language","Language",languageDisplayName(chosenLanguage),{openScreen("language"){showLanguage()}},28,3,3)
         settingsRow(group,"appearance","Appearance","Themes and colors",{openScreen("appearance"){showAppearance()}},3,3,3)
         settingsRow(group,"gameplay","Gameplay","Rules and preferences",{openScreen("gameplay"){showGameplay()}},3,3,3)
         settingsRow(group,"help","Help","Support tickets, feature requests",{openScreen("help"){showHelp()}},3,3,3)
         settingsRow(group,"about","General Information","Privacy policy, Game rules, App info",{openScreen("about"){showAbout()}},3,28,3)
-    }    private fun settingsRow(root:LinearLayout,icon:String,name:String,desc:String,action:()->Unit,topRadius:Int=24,bottomRadius:Int=24,verticalMargin:Int=0,showArrow:Boolean=true){
+        fun renderResults(raw:String){
+            results.removeAllViews()
+            val query=raw.trim().lowercase(Locale.getDefault())
+            val searching=query.isNotEmpty()
+            clear.visibility=if(searching)View.VISIBLE else View.GONE
+            group.visibility=if(searching)View.GONE else View.VISIBLE
+            if(!searching)return
+            val queryTerms=query.split(Regex("\\s+")).filter{it.isNotBlank()}
+            val matches=settingSearchItems().filter { item ->
+                val searchable=listOf(item.title,item.description,item.path,item.aliases,tr(item.title),tr(item.description),translatedSettingPath(item.path)).joinToString(" ").lowercase(Locale.getDefault())
+                queryTerms.all{searchable.contains(it)}
+            }.distinctBy{it.key to it.title}.take(20)
+            if(matches.isEmpty()){
+                results.addView(label(settingsSearchText("No settings found"),15,true,muted,Gravity.CENTER).apply{setPadding(dp(12),dp(24),dp(12),dp(24))},lp(-1,-2,0))
+                return
+            }
+            matches.forEachIndexed { index,item ->
+                val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(70);background=groupedShape(surface,if(index==0)24 else 3,if(index==matches.lastIndex)24 else 3,1);setPadding(dp(16),dp(10),dp(12),dp(10));isClickable=true;setOnClickListener{openSettingSearchResult(item)}}
+                val copy=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
+                copy.addView(label(item.title,15,true))
+                copy.addView(label(translatedSettingPath(item.path),11,false,accent).apply{setPadding(0,dp(3),0,0)})
+                row.addView(copy,weight(1f));row.addView(label("›",28,false,muted,Gravity.CENTER),lp(dp(28),dp(44),0))
+                results.addView(row,lp(-1,-2,0).apply{bottomMargin=if(index==matches.lastIndex)0 else dp(3)})
+            }
+        }
+        search.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){};override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){renderResults(s?.toString().orEmpty())};override fun afterTextChanged(s:android.text.Editable?){}})
+    }    private fun settingsRow(root:LinearLayout,icon:String,name:String,desc:String,action:()->Unit,topRadius:Int=24,bottomRadius:Int=24,verticalMargin:Int=0,showArrow:Boolean=true):LinearLayout{
         val c=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; minimumHeight=dp(68); background=groupedShape(surface,topRadius,bottomRadius,1); setPadding(dp(18),dp(8),dp(18),dp(8)); isClickable=true; setOnClickListener{action()} }
         root.addView(c,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(verticalMargin) })
         val iconBackground=when(icon){
@@ -624,6 +758,7 @@ class MainActivity : ComponentActivity() {
         val copy=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(14),0,0,0) }
         copy.addView(label(name,16,true)); copy.addView(label(desc,12,false,muted)); c.addView(copy,weight(1f))
         if(showArrow) c.addView(label("›",28,false,muted,Gravity.CENTER),lp(dp(28),dp(48),0))
+        return c
     }
     private val discordInviteDisplay="discord.gg/EJ7ThCgw4g"
     private val discordInviteUrl="https://$discordInviteDisplay"
@@ -651,6 +786,7 @@ class MainActivity : ComponentActivity() {
         banner.addView(label(discordInviteDisplay,13,true,Color.WHITE,Gravity.START).apply{setPadding(0,dp(22),0,dp(14))},lp(-1,-2,0))
         banner.addView(button("Join Discord  →",Color.WHITE,discordBlue){openDiscordInvite()}.apply{background=shape(Color.WHITE,20);textSize=15f},lp(-1,dp(54),0))
         root.addView(banner,lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        markSettingTarget(banner,"help:discord")
     }
     private fun openDiscordInvite(){
         val browserIntent=Intent(Intent.ACTION_VIEW,Uri.parse(discordInviteUrl)).apply{addCategory(Intent.CATEGORY_BROWSABLE)}
@@ -678,7 +814,9 @@ class MainActivity : ComponentActivity() {
             row.addView(label(languageDisplayName(code),14,true,if(active)accent else ink,Gravity.CENTER_VERTICAL),weight(1f))
             if(active)row.addView(label("✓",16,true,accent,Gravity.CENTER),lp(dp(28),dp(44),0))
             group.addView(row,lp(-1,dp(52),0).apply{bottomMargin=if(index==languages.lastIndex)0 else dp(3)})
+            markSettingTarget(row,"language:$code")
         }
+        markSettingTarget(group,"language:list")
     }
     private fun showAppearance(){
         val root=base(); title(root,"Appearance")
@@ -699,32 +837,43 @@ class MainActivity : ComponentActivity() {
             },LinearLayout.LayoutParams(dp(24),dp(24)).apply { leftMargin=dp(10) })
             option.addView(label(caption,13,true,foreground,Gravity.CENTER).apply { setPadding(dp(4),0,0,0) },LinearLayout.LayoutParams(0,dp(48),1f))
             picker.addView(option,LinearLayout.LayoutParams(0,dp(48),1f))
+            markSettingTarget(option,"appearance:$key")
         }
         themeOption("system","System",R.drawable.ic_theme_system)
         themeOption("dark","Dark",R.drawable.ic_theme_dark)
         themeOption("light","Light",R.drawable.ic_theme_light)
         root.addView(picker,lp(-1,-2,16)); mainMargin(picker)
+        markSettingTarget(picker,"appearance:theme")
         val c=card(root,10).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }; mainMargin(c)
         val copy=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         copy.addView(label("Use Android system colors",16,true))
         copy.addView(label("Match the app to your device palette.",12,false,muted))
         c.addView(copy,weight(1f))
         c.addView(expressiveToggle(useSystemColors){ on->useSystemColors=on;saveState();showAppearance() },lp(dp(64),dp(40),0))
+        markSettingTarget(c,"appearance:system_colors")
     }
     private fun showGameplay(){
         val root=base();title(root,"Gameplay");divider(root,16)
-        root.addView(label("No additional gameplay settings are needed. Premium comfort-zone calibration is available from each player card.",14,false,muted,Gravity.CENTER).apply{setPadding(dp(18),dp(20),dp(18),dp(20));background=shape(surface,22,1);setLineSpacing(dp(3).toFloat(),1f)},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        val info=label("No additional gameplay settings are needed. Premium comfort-zone calibration is available from each player card.",14,false,muted,Gravity.CENTER).apply{setPadding(dp(18),dp(20),dp(18),dp(20));background=shape(surface,22,1);setLineSpacing(dp(3).toFloat(),1f)}
+        root.addView(info,lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        markSettingTarget(info,"gameplay:screen")
+        markSettingTarget(info,"gameplay:comfort")
     }
     private fun showAbout(){
         val root=base(); title(root,"General Information")
         divider(root,16)
         val group=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         root.addView(group,lp(-1,-2,0).apply { leftMargin=dp(16); rightMargin=dp(16) })
-        settingsRow(group,"◆","Game rules","How to play and keep it respectful",{openScreen("rules"){showGameRules()}},28,3,3,showArrow=false)
-        settingsRow(group,"ⓘ","Privacy policy","How Never Have I Ever handles your data",{openScreen("privacy"){showPrivacyPolicy()}},3,3,3,showArrow=false)
-        settingsRow(group,"✦","About app","Version and Android compatibility",{openScreen("appInfo"){showAppInformation()}},3,if(premium)28 else 3,3,showArrow=false)
+        markSettingTarget(group,"about:list")
+        val rulesRow=settingsRow(group,"◆","Game rules","How to play and keep it respectful",{openScreen("rules"){showGameRules()}},28,3,3,showArrow=false)
+        val privacyRow=settingsRow(group,"ⓘ","Privacy policy","How Never Have I Ever handles your data",{openScreen("privacy"){showPrivacyPolicy()}},3,3,3,showArrow=false)
+        val appInfoRow=settingsRow(group,"✦","About app","Version and Android compatibility",{openScreen("appInfo"){showAppInformation()}},3,if(premium)28 else 3,3,showArrow=false)
+        markSettingTarget(rulesRow,"about:rules")
+        markSettingTarget(privacyRow,"about:privacy")
+        markSettingTarget(appInfoRow,"about:app_info")
         if(!premium) {
-            settingsRow(group,"✦","Premium plans","Compare subscriptions and lifetime access",{openScreen("premiumPlans"){showPremiumPlans()}},3,28,3,showArrow=false)
+            val premiumRow=settingsRow(group,"✦","Premium plans","Compare subscriptions and lifetime access",{openScreen("premiumPlans"){showPremiumPlans()}},3,28,3,showArrow=false)
+            markSettingTarget(premiumRow,"about:premium")
         }
     }    private val privacyPolicyDisplayUrl="github.com/joaofidalgo1998/Never_Have_I_Ever/blob/main/PRIVACY_POLICY.md"
     private val privacyPolicyUrl="https://$privacyPolicyDisplayUrl"
@@ -743,7 +892,7 @@ class MainActivity : ComponentActivity() {
         }
         return linked
     }
-    private fun informationPage(titleText:String, body:String) {
+    private fun informationPage(titleText:String, body:String, highlightKey:String?=null) {
         val root=base(scroll=false)
         root.setPadding(dp(16),0,dp(16),dp(16))
         title(root,titleText,true,{goBack()},0)
@@ -752,6 +901,7 @@ class MainActivity : ComponentActivity() {
         scroll.addView(label(linkedInformationText(body),15,false,ink).apply { movementMethod=android.text.method.LinkMovementMethod.getInstance();highlightColor=Color.TRANSPARENT;setLineSpacing(dp(7).toFloat(),1.0f);setPadding(dp(18),0,dp(18),dp(10)) })
         c.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         root.addView(c,LinearLayout.LayoutParams(-1,0,1f).apply { topMargin=dp(10) })
+        highlightKey?.let{markSettingTarget(c,it)}
     }
     private data class GameRule(val title:String,val detail:String,val highlighted:Boolean=false,val premium:Boolean=false)
     private fun gameRuleItems():List<GameRule> = listOf(
@@ -781,7 +931,8 @@ class MainActivity : ComponentActivity() {
     private fun showGameRules(){
         val root=base();title(root,"Game rules");divider(root,12)
         root.addView(label("Follow these steps to start, then explore Premium features whenever you want.",14,false,muted).apply{setPadding(0,0,0,dp(10))},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
-        root.addView(gameRulesPanel(),lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        val panel=gameRulesPanel();root.addView(panel,lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        markSettingTarget(panel,"rules:content")
     }
     private fun continueAfterFirstRun(){ if(!prefs.getBoolean("premiumWelcomeSeen",false)){offerAfterPrivacy=true;window.decorView.post{requestFirstOffer()}} }
     private fun showGameRulesNotice(){
@@ -819,9 +970,9 @@ For privacy questions, use the contact options available through that GitHub pro
 
 If this policy changes, the current text will be provided in the app and on its published privacy-policy page.
 """.trimIndent()
-    private fun showPrivacyPolicy(){ informationPage("Privacy policy",trKey("__privacy_policy_body",privacyText())) }
+    private fun showPrivacyPolicy(){ informationPage("Privacy policy",trKey("__privacy_policy_body",privacyText()),"privacy:content") }
     private fun installedVersion():String = runCatching { packageManager.getPackageInfo(packageName,0).versionName ?: "Unknown" }.getOrDefault("Unknown")
-    private fun showAppInformation(){ informationPage("About app","${tr("App version")}\n${installedVersion()}\n\n${tr("Minimum SDK")}\nAndroid 7.0 · API 24\n\n${tr("Target SDK")}\nAndroid 16 · API 36\n\n${tr("Supported API levels")}\nAPI 24 to API 36") }
+    private fun showAppInformation(){ informationPage("About app","${tr("App version")}\n${installedVersion()}\n\n${tr("Minimum SDK")}\nAndroid 7.0 · API 24\n\n${tr("Target SDK")}\nAndroid 16 · API 36\n\n${tr("Supported API levels")}\nAPI 24 to API 36","app_info:content") }
     private fun showPrivacyNotice(){
         val dialog=Dialog(this)
         val shell=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=shape(surface,28,1); clipToOutline=true; setPadding(dp(18),dp(18),dp(18),dp(18)) }
@@ -1248,7 +1399,8 @@ If this policy changes, the current text will be provided in the app and on its 
         if(premium){ currentScreen="about"; showAbout(); return }
         queryProducts()
         val root=base(); title(root,"Premium plans")
-        root.addView(premiumSupportBanner(),lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16);topMargin=dp(16);bottomMargin=dp(10) })
+        val support=premiumSupportBanner();root.addView(support,lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16);topMargin=dp(16);bottomMargin=dp(10) })
+        markSettingTarget(support,"premium:screen")
         root.addView(label("Unlock every level, comfort-zone calibration, and custom cards.",14,false,muted).apply { setPadding(0,0,0,dp(10)) },lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16) })
         var selected=premiumAnnualProductId
         val rows=mutableListOf<TextView>()
@@ -1256,17 +1408,23 @@ If this policy changes, the current text will be provided in the app and on its 
         fun addPlan(id:String,title:String,detail:String){
             val row=label("$title\n${prices[id] ?: "Current price from Google Play"} · $detail",15,true,ink,Gravity.CENTER_VERTICAL).apply { tag=id;setPadding(dp(18),0,dp(18),0);isClickable=true;setOnClickListener{selected=id;refresh()} }
             rows.add(row);root.addView(row,lp(-1,dp(72),4).apply { leftMargin=dp(16);rightMargin=dp(16) });refresh()
+            val key=when(id){premiumMonthlyProductId->"premium:monthly";premiumAnnualProductId->"premium:yearly";else->"premium:lifetime"}
+            markSettingTarget(row,key)
         }
         addPlan(premiumMonthlyProductId,"Monthly","renews monthly")
         addPlan(premiumAnnualProductId,"Yearly","best value")
         addPlan(premiumLifetimeProductId,"Lifetime","one-time purchase")
         root.addView(label("Subscriptions renew automatically. Cancel anytime.",11,false,muted,Gravity.CENTER).apply { setPadding(0,dp(8),0,dp(8)) },lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16) })
-        root.addView(button("Continue",accent,onAccent()){
+        val continueButton=button("Continue",accent,onAccent()){
             val detail=products[selected] ?: run { Toast.makeText(this,"Google Play is loading the current prices. Please try again shortly.",Toast.LENGTH_SHORT).show();return@button }
             val item=BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(detail).apply { if(selected!=premiumLifetimeProductId) setOfferToken(detail.subscriptionOfferDetails?.firstOrNull()?.offerToken ?: "") }.build()
             billingClient.launchBillingFlow(this,BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(item)).build())
-        },lp(-1,dp(54),4).apply { leftMargin=dp(16);rightMargin=dp(16) })
-        root.addView(button("Restore purchases",surface,ink){queryOwned(true)},lp(-1,dp(54),4).apply { leftMargin=dp(16);rightMargin=dp(16) })
+        }
+        root.addView(continueButton,lp(-1,dp(54),4).apply { leftMargin=dp(16);rightMargin=dp(16) })
+        val restoreButton=button("Restore purchases",surface,ink){queryOwned(true)}
+        root.addView(restoreButton,lp(-1,dp(54),4).apply { leftMargin=dp(16);rightMargin=dp(16) })
+        markSettingTarget(continueButton,"premium:continue")
+        markSettingTarget(restoreButton,"premium:restore")
     }
     private fun showPremium(firstLaunch:Boolean=false, planIds:List<String> = listOf(premiumMonthlyProductId,premiumAnnualProductId,premiumLifetimeProductId)){
         if(premium) return
