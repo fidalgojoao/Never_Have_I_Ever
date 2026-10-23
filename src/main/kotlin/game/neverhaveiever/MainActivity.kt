@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     private val customCards = mutableListOf<Card>()
     private val decks = mutableMapOf<String, MutableList<Card>>()
     private var selectedLevel = "soft"
+    private var customCardsEnabled = false
     private var useSystemColors = false
     private var themeMode = "dark"
     private var limitTruths = false
@@ -218,6 +219,11 @@ class MainActivity : ComponentActivity() {
         "CONFESSIONS WITHOUT THE PAPERWORK" to "CONFISSÕES SEM BUROCRACIA",
         "My custom cards" to "Minhas cartas personalizadas",
         "My custom cards ✏️" to "Minhas cartas personalizadas ✏️",
+        "Add a custom card" to "Adicionar uma carta personalizada",
+        "Custom cards are mixed into every matching level." to "As cartas personalizadas são misturadas ao nível correspondente.",
+        "Choose a level" to "Escolha um nível",
+        "Enabled for matching levels" to "Ativado nos níveis correspondentes",
+        "Turn on to mix these cards into every level" to "Ative para misturar estas cartas em todos os níveis",
         "Hot, Naughty and My custom cards unlock with Premium." to "Quente, Impertinente e Minhas cartas personalizadas são desbloqueados com o Premium.",
         "Help" to "Ajuda",
         "Support tickets, feature requests" to "Chamados de suporte e sugestões de recursos",
@@ -239,6 +245,7 @@ class MainActivity : ComponentActivity() {
         "Use Premium comfort-zone calibration to keep prompts appropriate for each player." to "Use a calibração da zona de conforto Premium para manter as afirmações adequadas a cada jogador.",
         "3. Choose the game level" to "3. Escolha o nível do jogo",
         "Choose Casual, Flirty, Hot, Naughty, or your custom cards." to "Escolha Casual, Glamour, Quente, Impertinente ou suas cartas personalizadas.",
+        "Choose Casual, Flirty, Hot, or Naughty." to "Escolha Casual, Glamour, Quente ou Impertinente.",
         "4. Start the game" to "4. Comece o jogo",
         "Tap Let's play, then choose Spin the Wheel or Taking turns." to "Toque em Vamos brincar e escolha Girar a roleta ou Em turnos.",
         "5. Respond to the statement" to "5. Responda à afirmação",
@@ -602,12 +609,21 @@ class MainActivity : ComponentActivity() {
             val gp=GridLayout.LayoutParams().apply { width=0;height=dp(58);columnSpec=GridLayout.spec(GridLayout.UNDEFINED,1f); val left=if(grid.childCount%2==0)0 else dp(4);val right=if(grid.childCount%2==0)dp(4) else 0;setMargins(left,dp(2),right,dp(2)) };grid.addView(cell,gp)
         }
         levelCell("soft",false);levelCell("hot",false);levelCell("hard",true);levelCell("extreme",true)
+        levels.addView(grid)
         val customLocked=!premium
-        val customSelected=selectedLevel=="mydares"
-        val custom=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER; isClickable=true; background=if(customSelected)accentOutline(26) else shape(if(customLocked)lockedFill else surface,26,1); setOnClickListener { if(customLocked)showPremium() else {selectedLevel="mydares";saveState();openScreen("custom"){showCustomCards()}} } }
-        custom.addView(label("My custom cards ✏️",13,true,if(customSelected)accent else if(customLocked)muted else ink,Gravity.CENTER).apply { textSize=13.65f })
-        custom.addView(label(if(customLocked)"Premium  🔒" else "Your custom cards",11,false,if(customSelected)accent else muted,Gravity.CENTER).apply { textSize=11.55f; setPadding(0,dp(2),0,0) })
-        grid.addView(custom,GridLayout.LayoutParams().apply{width=-1;height=dp(53);columnSpec=GridLayout.spec(0,2);setMargins(0,dp(2),0,dp(2))});levels.addView(grid)
+        val custom=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL; background=shape(if(customLocked)lockedFill else surface,22,1); setPadding(dp(14),0,dp(8),0) }
+        val customNavigation=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;isClickable=true;isFocusable=true;setOnClickListener { if(customLocked)showPremium() else openScreen("custom"){showCustomCards()} } }
+        val customCopy=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        customCopy.addView(label("My custom cards",13,true,if(customLocked)muted else ink).apply{textSize=13.65f})
+        customCopy.addView(label(if(customLocked)"Premium  🔒" else if(customCardsEnabled)"Enabled for matching levels" else "Turn on to mix these cards into every level",10,false,muted).apply{setPadding(0,dp(2),0,0);maxLines=2})
+        customNavigation.addView(customCopy,weight(1f))
+        customNavigation.addView(label("›",28,false,if(customLocked)muted else accent,Gravity.CENTER),lp(dp(42),dp(42),0))
+        custom.addView(customNavigation,LinearLayout.LayoutParams(0,-1,1f))
+        custom.addView(View(this).apply{setBackgroundColor(outline)},lp(dp(1),dp(38),0).apply{leftMargin=dp(4);rightMargin=dp(8)})
+        val customSwitch=expressiveToggle(customCardsEnabled&&premium,premium){enabled->customCardsEnabled=enabled;saveState();showHome()}
+        if(customLocked){customSwitch.isClickable=true;customSwitch.isFocusable=true;customSwitch.setOnClickListener{showPremium()};customSwitch.getChildAt(0).setOnClickListener{showPremium()}}
+        custom.addView(customSwitch,lp(dp(64),dp(40),0))
+        levels.addView(custom,lp(-1,dp(68),4))
         }
         if(!premium && levelsPanelExpanded) root.addView(label("Hot, Naughty and My custom cards unlock with Premium.",12,false,muted,Gravity.CENTER).apply{setPadding(0,dp(3),0,0)},lp(-1,-2,0).apply { leftMargin=dp(16);rightMargin=dp(16) })
     }
@@ -965,7 +981,7 @@ class MainActivity : ComponentActivity() {
         GameRule("Play safely and respect every player","Participation is always voluntary. Anyone may skip a statement, change their mind, or stop playing. Stop immediately if someone feels uncomfortable.",highlighted=true),
         GameRule("1. Add players","Add at least two players to the game."),
         GameRule("2. Edit their preferences","Use Premium comfort-zone calibration to keep prompts appropriate for each player."),
-        GameRule("3. Choose the game level","Choose Casual, Flirty, Hot, Naughty, or your custom cards."),
+        GameRule("3. Choose the game level","Choose Casual, Flirty, Hot, or Naughty."),
         GameRule("4. Start the game","Tap Let's play, then choose Spin the Wheel or Taking turns."),
         GameRule("5. Respond to the statement","If you've never done it, you're safe. Otherwise, take a sip or put a finger down."),
         GameRule("My custom cards","Create, edit, import, export, and play your own statements.",premium=true)
@@ -1220,13 +1236,10 @@ If this policy changes, the current text will be provided in the app and on its 
     }
     private fun nextCard():Card {
         val active=players[turn%players.size]
-        if(selectedLevel=="mydares") {
-            val source=if(customCards.isNotEmpty()) customCards else decks["soft"].orEmpty()
-            return if(source.isEmpty()) Card("never","No prompt is available for this level.") else source.random()
-        }
         val personalLevel=comfortAdjustedLevel(active)
-        val pool=decks[personalLevel].orEmpty()
-        return if(pool.isEmpty()) Card("never","No prompt is available for this level.") else pool.random()
+        val custom=if(premium&&customCardsEnabled)customCards.filter{it.level==personalLevel}else emptyList()
+        val regular=decks[personalLevel].orEmpty()
+        return when{custom.isNotEmpty()&&(regular.isEmpty()||Random.nextBoolean())->custom.random();regular.isNotEmpty()->regular.random();else->Card("never","No prompt is available for this level.")}
     }
     private fun showCard(card:Card){
         currentCard=card;val player=players[turn%players.size];val doneTone=readableGreen();val next=button("Done · next turn →",surface,doneTone){saveState();continueToNextTurn()}.apply{background=toneOutline(doneTone);setTextColor(doneTone);textSize=16f;minHeight=dp(72);isSingleLine=false;maxLines=2;ellipsize=null;setLineSpacing(dp(2).toFloat(),1f);setPadding(dp(12),dp(4),dp(12),dp(4))};val dock=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL};val again=button("Choose again",accent,onAccent()){activeTimer?.cancel();showCard(nextCard())}.apply{textSize=16f;isSingleLine=false;maxLines=2;ellipsize=null;setLineSpacing(dp(2).toFloat(),1f);setPadding(dp(12),dp(4),dp(12),dp(4))};dock.addView(again,LinearLayout.LayoutParams(0,dp(72),.48f).apply{rightMargin=dp(8)});dock.addView(next,LinearLayout.LayoutParams(0,dp(72),.52f))
@@ -1241,15 +1254,16 @@ If this policy changes, the current text will be provided in the app and on its 
     }
     private fun showCustomCards(){
         val root=base(); title(root,"My custom cards")
-        root.addView(label("Create your own Never Have I Ever statements for the group.",17,false,muted).apply{setPadding(0,dp(20),0,dp(16))},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        root.addView(label("Custom cards are mixed into every matching level.",17,false,muted).apply{setPadding(0,dp(20),0,dp(16))},lp(-1,-2,0).apply{leftMargin=dp(16);rightMargin=dp(16)})
         customCards.forEachIndexed{i,c->
             val row=card(root,6); val line=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL}
+            line.addView(label(levelName(c.level),12,true,accent),LinearLayout.LayoutParams(dp(105),-2))
             line.addView(label(c.text,17,false,ink),LinearLayout.LayoutParams(0,-2,1f))
             line.addView(cardAction(R.drawable.ic_edit,"Edit card"){editCustom(i)},lp(dp(48),dp(48),0))
             line.addView(cardAction(R.drawable.ic_delete,"Delete card"){customCards.removeAt(i);saveState();showCustomCards()},lp(dp(48),dp(48),3))
             row.addView(line)
         }
-        val addCustom=button("Add a custom statement",accent,onAccent()){editCustom(-1)};root.addView(addCustom,lp(-1,dp(62),10).apply{leftMargin=dp(16);rightMargin=dp(16)})
+        val addCustom=button("Add a custom card",accent,onAccent()){editCustom(-1)};root.addView(addCustom,lp(-1,dp(62),10).apply{leftMargin=dp(16);rightMargin=dp(16)})
         val manage=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; isClickable=true; setPadding(dp(18),dp(15),dp(18),dp(15)); background=shape(surface,22,1); setOnClickListener { openScreen("manage"){manageCards()} } }
         manage.addView(label("Manage your cards",17,true)); manage.addView(label("Import, export, and organize your custom cards",12,false,muted).apply { setPadding(0,dp(4),0,0) })
         root.addView(manage,lp(-1,-2,8).apply{leftMargin=dp(16);rightMargin=dp(16)})
@@ -1258,11 +1272,18 @@ If this policy changes, the current text will be provided in the app and on its 
         val old=if(index>=0)customCards[index] else null
         val dialog=Dialog(this)
         val form=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=shape(surface,28,1); setPadding(dp(22),dp(22),dp(22),dp(20)) }
-        form.addView(label(if(old==null)"Add a custom statement" else "Edit custom card",22,true).apply{setPadding(0,0,0,dp(14))})
+        form.addView(label(if(old==null)"Add a custom card" else "Edit custom card",22,true).apply{setPadding(0,0,0,dp(14))})
+        var cardLevel=old?.level?.takeIf{it in listOf("soft","hot","hard","extreme")} ?: selectedLevel.takeIf{it in listOf("soft","hot","hard","extreme")} ?: "soft"
+        form.addView(label("Choose a level",12,true).apply{setPadding(0,0,0,dp(5))})
+        val levelPicker=GridLayout(this).apply{columnCount=2}
+        val levelOptions=mutableListOf<TextView>()
+        listOf("soft","hot","hard","extreme").forEachIndexed{i,level->val choice=button(levelName(level),surface,ink){}.apply{tag=level;textSize=13f;minHeight=dp(46);setOnClickListener{cardLevel=level;levelOptions.forEach{view->val active=view.tag==cardLevel;view.background=if(active)accentOutline(18)else shape(surface,18,1);view.setTextColor(if(active)accent else ink)}}};levelOptions.add(choice);levelPicker.addView(choice,GridLayout.LayoutParams().apply{width=0;height=dp(46);columnSpec=GridLayout.spec(GridLayout.UNDEFINED,1f);setMargins(if(i%2==0)0 else dp(4),dp(2),if(i%2==0)dp(4)else 0,dp(2))})}
+        levelOptions.forEach{view->val active=view.tag==cardLevel;view.background=if(active)accentOutline(18)else shape(surface,18,1);view.setTextColor(if(active)accent else ink)}
+        form.addView(levelPicker)
         val input=EditText(this).apply { hint=tr("Write a custom card"); setText(old?.text?:""); setTextColor(ink); setHintTextColor(muted); textSize=17f; gravity=Gravity.TOP; minLines=4; background=shape(this@MainActivity.background,18,1); setPadding(dp(14),dp(14),dp(14),dp(14)) }
         form.addView(input,lp(-1,dp(150),4))
         val actions=LinearLayout(this).apply { gravity=Gravity.END or Gravity.CENTER_VERTICAL; setPadding(0,dp(16),0,0) }
-        actions.addView(button("Cancel",surface,muted){dialog.dismiss()},lp(dp(122),dp(54),0)); actions.addView(button(if(old==null)"Add" else "Save",accent,onAccent()){ val value=input.text.toString().trim(); if(value.isNotEmpty()){if(old==null)customCards.add(Card("never",value))else{old.kind="never";old.text=value};saveState();dialog.dismiss();showCustomCards()} },lp(dp(122),dp(54),8))
+        actions.addView(button("Cancel",surface,muted){dialog.dismiss()},lp(dp(122),dp(54),0)); actions.addView(button(if(old==null)"Add" else "Save",accent,onAccent()){ val value=input.text.toString().trim(); if(value.isNotEmpty()){if(old==null)customCards.add(Card("never",value,level=cardLevel))else{old.kind="never";old.text=value;old.level=cardLevel};saveState();dialog.dismiss();showCustomCards()} },lp(dp(122),dp(54),8))
         form.addView(actions)
         dialog.setContentView(form); dialog.show(); dialog.window?.apply { setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)); setLayout((resources.displayMetrics.widthPixels*.90f).toInt(),-2); attributes=attributes.apply { dimAmount=.48f }; addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND) }
     }
@@ -1275,7 +1296,7 @@ If this policy changes, the current text will be provided in the app and on its 
     }
     private fun exportCardsTo(uri:Uri){
         try {
-            val cards=org.json.JSONArray(); customCards.forEach { cards.put(JSONObject().put("kind",it.kind).put("text",it.text)) }
+            val cards=org.json.JSONArray(); customCards.forEach { cards.put(JSONObject().put("kind",it.kind).put("text",it.text).put("level",it.level)) }
             contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(JSONObject().put("cards",cards).toString(2)) }
             Toast.makeText(this,"Cards exported.",Toast.LENGTH_SHORT).show()
         } catch(e:Exception) { Toast.makeText(this,"Could not export cards.",Toast.LENGTH_LONG).show() }
@@ -1284,7 +1305,7 @@ If this policy changes, the current text will be provided in the app and on its 
         try {
             val raw=contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
             val imported=mutableListOf<Card>()
-            fun collect(value:Any?){ when(value){ is org.json.JSONArray -> for(i in 0 until value.length()) collect(value.opt(i)); is JSONObject -> { val text=value.optString("text",value.optString("prompt",value.optString("content",value.optString("card")))).trim(); if(text.isNotEmpty()) imported.add(Card("never",text)); value.keys().forEach { key -> if(key !in listOf("kind","type","text","prompt","content","card")) collect(value.opt(key)) } } } }
+            fun collect(value:Any?){ when(value){ is org.json.JSONArray -> for(i in 0 until value.length()) collect(value.opt(i)); is JSONObject -> { val text=value.optString("text",value.optString("prompt",value.optString("content",value.optString("card")))).trim(); val level=value.optString("level","soft").takeIf{it in listOf("soft","hot","hard","extreme")}?:"soft"; if(text.isNotEmpty()) imported.add(Card("never",text,level=level)); value.keys().forEach { key -> if(key !in listOf("kind","type","text","prompt","content","card","level")) collect(value.opt(key)) } } } }
             runCatching { collect(JSONObject(raw)) }.getOrElse { runCatching { collect(org.json.JSONArray(raw)) } }
             if(imported.isEmpty()) raw.lineSequence().map{it.trim()}.filter{it.isNotEmpty()}.forEach { imported.add(Card("never",it.removePrefix("Never Have I Ever:").trim())) }
             if(imported.isEmpty()) throw IllegalArgumentException("No cards found")
@@ -1546,8 +1567,8 @@ If this policy changes, the current text will be provided in the app and on its 
             val fallback=mutableListOf(Card("never","{X}: Never have I ever forgotten why I walked into a room."))
             decks["soft"]=fallback;decks["hot"]=fallback;decks["hard"]=fallback;decks["extreme"]=fallback
         }
-    }    private fun loadState(){themeMode=prefs.getString("theme","dark")?:"dark";useSystemColors=prefs.getBoolean("systemColors",false);selectedLevel=prefs.getString("selectedLevel","soft")?:"soft";limitTruths=prefs.getBoolean("limit",false);truthLimit=prefs.getInt("truthLimit",2).coerceIn(1,5);reverseDares=prefs.getBoolean("reverseDares",false);reverseDareLimit=prefs.getInt("reverseDareLimit",2).coerceIn(1,5);premium=hasValidCachedPremiumEntitlement();lifetimePremium=hasValidCachedLifetimeEntitlement();ttsEnabled=prefs.getBoolean("ttsEnabled",false);val json=prefs.getString("players","[]")?:"[]";try{val a=org.json.JSONArray(json);for(i in 0 until a.length()){val x=a.getJSONObject(i);players.add(Player(x.optString("name"),x.optString("gender","").let{if(it=="Other")"" else it},x.optString("preference",""),x.optInt("truthStreak"),x.optInt("dareStreak"),x.optInt("comfort",5).coerceIn(1,10),x.optBoolean("comfortEnabled",false),MutableList(x.optJSONArray("specific")?.length()?:0){j->x.optJSONArray("specific")?.optString(j)?:""}.filter{it.isNotBlank()}.toMutableSet()))}}catch(_:Exception){};val cards=prefs.getString("cards","[]")?:"[]";try{val a=org.json.JSONArray(cards);for(i in 0 until a.length()){val x=a.getJSONObject(i);customCards.add(Card(x.optString("kind"),x.optString("text")))}}catch(_:Exception){}}
-    private fun saveState(){val a=org.json.JSONArray();players.forEach{p->a.put(JSONObject().put("name",p.name).put("gender",p.gender).put("preference",p.preference).put("truthStreak",p.truthStreak).put("dareStreak",p.dareStreak).put("comfort",p.comfort).put("comfortEnabled",p.comfortEnabled).put("specific",org.json.JSONArray(p.specificPlayers.toList())))};val c=org.json.JSONArray();customCards.forEach{x->c.put(JSONObject().put("kind",x.kind).put("text",x.text))};prefs.edit().putString("theme",themeMode).putBoolean("systemColors",useSystemColors).putString("selectedLevel",selectedLevel).putBoolean("limit",limitTruths).putInt("truthLimit",truthLimit).putBoolean("reverseDares",reverseDares).putInt("reverseDareLimit",reverseDareLimit).remove("premium").putBoolean("ttsEnabled",ttsEnabled).putString("players",a.toString()).putString("cards",c.toString()).apply()}
+    }    private fun loadState(){themeMode=prefs.getString("theme","dark")?:"dark";useSystemColors=prefs.getBoolean("systemColors",false);selectedLevel=prefs.getString("selectedLevel","soft")?:"soft";customCardsEnabled=prefs.getBoolean("customCardsEnabled",selectedLevel=="mydares");if(selectedLevel=="mydares")selectedLevel="soft";limitTruths=prefs.getBoolean("limit",false);truthLimit=prefs.getInt("truthLimit",2).coerceIn(1,5);reverseDares=prefs.getBoolean("reverseDares",false);reverseDareLimit=prefs.getInt("reverseDareLimit",2).coerceIn(1,5);premium=hasValidCachedPremiumEntitlement();lifetimePremium=hasValidCachedLifetimeEntitlement();ttsEnabled=prefs.getBoolean("ttsEnabled",false);val json=prefs.getString("players","[]")?:"[]";try{val a=org.json.JSONArray(json);for(i in 0 until a.length()){val x=a.getJSONObject(i);players.add(Player(x.optString("name"),x.optString("gender","").let{if(it=="Other")"" else it},x.optString("preference",""),x.optInt("truthStreak"),x.optInt("dareStreak"),x.optInt("comfort",5).coerceIn(1,10),x.optBoolean("comfortEnabled",false),MutableList(x.optJSONArray("specific")?.length()?:0){j->x.optJSONArray("specific")?.optString(j)?:""}.filter{it.isNotBlank()}.toMutableSet()))}}catch(_:Exception){};val cards=prefs.getString("cards","[]")?:"[]";try{val a=org.json.JSONArray(cards);for(i in 0 until a.length()){val x=a.getJSONObject(i);val level=x.optString("level","soft").takeIf{it in listOf("soft","hot","hard","extreme")}?:"soft";customCards.add(Card(x.optString("kind"),x.optString("text"),level=level))}}catch(_:Exception){}}
+    private fun saveState(){val a=org.json.JSONArray();players.forEach{p->a.put(JSONObject().put("name",p.name).put("gender",p.gender).put("preference",p.preference).put("truthStreak",p.truthStreak).put("dareStreak",p.dareStreak).put("comfort",p.comfort).put("comfortEnabled",p.comfortEnabled).put("specific",org.json.JSONArray(p.specificPlayers.toList())))};val c=org.json.JSONArray();customCards.forEach{x->c.put(JSONObject().put("kind",x.kind).put("text",x.text).put("level",x.level))};prefs.edit().putString("theme",themeMode).putBoolean("systemColors",useSystemColors).putString("selectedLevel",selectedLevel).putBoolean("customCardsEnabled",customCardsEnabled).putBoolean("limit",limitTruths).putInt("truthLimit",truthLimit).putBoolean("reverseDares",reverseDares).putInt("reverseDareLimit",reverseDareLimit).remove("premium").putBoolean("ttsEnabled",ttsEnabled).putString("players",a.toString()).putString("cards",c.toString()).apply()}
 
     private inner class LevelFaceView(private val style:String, private val tone:Int):View(this@MainActivity) {
         private val line=Paint(Paint.ANTI_ALIAS_FLAG).apply { style=Paint.Style.STROKE; strokeCap=Paint.Cap.ROUND; strokeJoin=Paint.Join.ROUND }
@@ -1592,7 +1613,7 @@ If this policy changes, the current text will be provided in the app and on its 
         }
     }
     data class Player(var name:String,var gender:String="",var preference:String="",var truthStreak:Int=0,var dareStreak:Int=0,var comfort:Int=5,var comfortEnabled:Boolean=false,var specificPlayers:MutableSet<String> = mutableSetOf())
-    data class Card(var kind:String,var text:String,var targetName:String?=null)
+    data class Card(var kind:String,var text:String,var targetName:String?=null,var level:String="soft")
 }
 
 
