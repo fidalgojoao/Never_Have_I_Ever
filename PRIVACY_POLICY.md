@@ -60,7 +60,7 @@ If this policy changes, the current version will be provided in the app and on t
 
 The published version of this policy is available at:
 
-<https://github.com/joaofidalgo1998/Never_Have_I_Ever/blob/main/PRIVACY_POLICY.md>
+<https://github.com/fidalgojoao/fidalgojoao/blob/main/truth-or-dare-privacy-policy.md>
 
 For privacy questions or requests, use the contact options available through this GitHub profile:
 

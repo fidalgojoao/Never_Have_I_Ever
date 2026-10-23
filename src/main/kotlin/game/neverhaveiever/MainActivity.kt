@@ -960,7 +960,7 @@ class MainActivity : ComponentActivity() {
         markSettingTarget(rulesRow,"about:rules")
         markSettingTarget(privacyRow,"about:privacy")
         markSettingTarget(appInfoRow,"about:app_info")
-    }    private val privacyPolicyDisplayUrl="github.com/joaofidalgo1998/Never_Have_I_Ever/blob/main/PRIVACY_POLICY.md"
+    }    private val privacyPolicyDisplayUrl="github.com/fidalgojoao/fidalgojoao/blob/main/truth-or-dare-privacy-policy.md"
     private val privacyPolicyUrl="https://$privacyPolicyDisplayUrl"
     private fun linkedInformationText(body:String):android.text.SpannableString {
         val linked=android.text.SpannableString(body)
@@ -1050,7 +1050,7 @@ Local data remains on the device until you edit it, delete it, clear the app's s
 
 Never Have I Ever is intended for adults and is not directed to children.
 
-The published privacy policy is available at: github.com/joaofidalgo1998/Never_Have_I_Ever/blob/main/PRIVACY_POLICY.md
+The published privacy policy is available at: github.com/fidalgojoao/fidalgojoao/blob/main/truth-or-dare-privacy-policy.md
 
 For privacy questions, use the contact options available through that GitHub profile.
 
